@@ -1,6 +1,6 @@
 import { type SQLiteDatabase } from "expo-sqlite";
 
-export const TARGET_DATABASE_VERSION = 1;
+export const TARGET_DATABASE_VERSION = 2;
 
 export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
   const result = await db.getFirstAsync<{ user_version: number }>(
@@ -12,12 +12,11 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
     return;
   }
 
+  // Version 0 to Version 1 (Base Schema)
   if (currentDbVersion === 0) {
-    // Enable WAL mode & foreign keys
     await db.execAsync("PRAGMA journal_mode = WAL;");
     await db.execAsync("PRAGMA foreign_keys = ON;");
 
-    // Version 1 Schema
     await db.execAsync(`
       -- Athlete Profile
       CREATE TABLE IF NOT EXISTS athlete_profile (
@@ -175,44 +174,60 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase): Promise<void> {
         unlocked_at TEXT
       );
 
-      -- Indexes for performance
+      -- Indexes for fast queries
       CREATE INDEX IF NOT EXISTS idx_workout_sets_session ON workout_sets(session_id);
       CREATE INDEX IF NOT EXISTS idx_pr_exercise ON personal_records(exercise_name);
       CREATE INDEX IF NOT EXISTS idx_measurements_type ON body_measurements(measurement_type);
       CREATE INDEX IF NOT EXISTS idx_program_days ON program_days(program_id);
     `);
 
-    // Populate Initial Seed Data
-    await seedInitialData(db);
+    // Seed only static educational content (exercises, boxing presets & combinations, achievement targets)
+    await seedStaticContent(db);
 
     currentDbVersion = 1;
-    await db.execAsync(`PRAGMA user_version = ${TARGET_DATABASE_VERSION};`);
   }
+
+  // Version 1 to Version 2: Purge any initial fake user records
+  if (currentDbVersion === 1) {
+    await db.execAsync(`
+      -- Clean any fake PRs
+      DELETE FROM personal_records;
+      -- Clean any fake workout sessions and sets
+      DELETE FROM workout_sets;
+      DELETE FROM workout_sessions;
+      -- Clean fake measurements
+      DELETE FROM body_measurements;
+      -- Reset achievements to locked state
+      UPDATE achievements SET current_value = 0, unlocked_at = NULL;
+    `);
+
+    // If profile has fake default values, reset it so onboarding appears
+    const profile = await db.getFirstAsync<any>(
+      "SELECT * FROM athlete_profile WHERE id = 'default-athlete';"
+    );
+    if (profile && profile.display_name === "Iron Athlete") {
+      await db.runAsync("DELETE FROM athlete_profile WHERE id = 'default-athlete';");
+    }
+
+    currentDbVersion = 2;
+  }
+
+  await db.execAsync(`PRAGMA user_version = ${TARGET_DATABASE_VERSION};`);
 }
 
-async function seedInitialData(db: SQLiteDatabase): Promise<void> {
-  const now = new Date().toISOString();
-
-  // 1. Initial Athlete Profile
-  await db.runAsync(
-    `INSERT OR IGNORE INTO athlete_profile 
-      (id, display_name, age, height, current_weight, preferred_weight_unit, preferred_distance_unit, sex, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
-    ["default-athlete", "Iron Athlete", 28, 180, 82.5, "kg", "cm", "male", now, now]
-  );
-
-  // 2. Core Exercises Catalog
+async function seedStaticContent(db: SQLiteDatabase): Promise<void> {
+  // 1. Core Exercise Catalog
   const exercises = [
-    ["ex-bench", "Barbell Bench Press", "Chest", "Barbell"],
-    ["ex-inc-db", "Incline Dumbbell Press", "Chest", "Dumbbells"],
-    ["ex-squat", "Barbell Back Squat", "Legs", "Barbell"],
-    ["ex-deadlift", "Conventional Deadlift", "Back", "Barbell"],
-    ["ex-ohp", "Overhead Press (OHP)", "Shoulders", "Barbell"],
-    ["ex-pullup", "Weighted Pull-Up", "Back", "Bodyweight / Belt"],
-    ["ex-row", "Barbell Bent-Over Row", "Back", "Barbell"],
-    ["ex-dip", "Weighted Dip", "Chest / Triceps", "Parallel Bars"],
-    ["ex-romanian", "Romanian Deadlift", "Hamstrings", "Barbell"],
-    ["ex-lateral", "Dumbbell Lateral Raise", "Shoulders", "Dumbbells"],
+    ["ex-bench", "Barbell Bench Press", "Göğüs", "Barbell"],
+    ["ex-inc-db", "Incline Dumbbell Press", "Üst Göğüs", "Dumbbell"],
+    ["ex-squat", "Barbell Back Squat", "Bacak / Quadriceps", "Barbell"],
+    ["ex-deadlift", "Conventional Deadlift", "Sırt / Arka Bacak", "Barbell"],
+    ["ex-ohp", "Overhead Press (OHP)", "Omuz", "Barbell"],
+    ["ex-pullup", "Barfiks (Pull-Up)", "Sırt / Kanat", "Vücut Ağırlığı"],
+    ["ex-row", "Barbell Bent-Over Row", "Sırt", "Barbell"],
+    ["ex-dip", "Dips (Göğüs & Arka Kol)", "Göğüs / Arka Kol", "Paralel Bar"],
+    ["ex-romanian", "Romanian Deadlift", "Hamstrings / Kalça", "Barbell"],
+    ["ex-lateral", "Dumbbell Lateral Raise", "Yan Omuz", "Dumbbell"],
   ];
 
   for (const [id, name, cat, eq] of exercises) {
@@ -223,12 +238,12 @@ async function seedInitialData(db: SQLiteDatabase): Promise<void> {
     );
   }
 
-  // 3. Prebuilt Boxing Presets
+  // 2. Bundled Boxing Presets
   const presets = [
-    ["b-pre-1", "Pro Championship", 12, 180, 60, 10, 1, 1],
-    ["b-pre-2", "Standard Sparring", 6, 180, 60, 10, 1, 1],
-    ["b-pre-3", "Heavy Bag Conditioning", 8, 120, 45, 10, 1, 1],
-    ["b-pre-4", "Speed & Shadowboxing", 4, 120, 30, 10, 1, 1],
+    ["b-pre-1", "Profesyonel Şampiyona", 12, 180, 60, 10, 1, 1],
+    ["b-pre-2", "Standart Sparring", 6, 180, 60, 10, 1, 1],
+    ["b-pre-3", "Ağır Torba Kondisyon", 8, 120, 45, 10, 1, 1],
+    ["b-pre-4", "Hız & Gölge Boksu", 4, 120, 30, 10, 1, 1],
   ];
 
   for (const p of presets) {
@@ -240,27 +255,27 @@ async function seedInitialData(db: SQLiteDatabase): Promise<void> {
     );
   }
 
-  // 4. Bundled Boxing Combinations
+  // 3. Bundled Boxing Combinations
   const combos = [
     [
       "c-1",
-      "The Classic 1-2",
-      "Fundamental distance finder followed by a straight rear power cross.",
+      "Klasik 1-2 Kombinasyonu",
+      "Mesafe ayarlayan sol direkt ardından güçlü sağ düz yumruk.",
       JSON.stringify(["1 - Jab", "2 - Cross"]),
       0,
     ],
     [
       "c-2",
-      "Power Hook Trap",
-      "Jab to obscure vision, cross through guard, lead hook around the side.",
+      "Sol Kroşe Tuzağı",
+      "Gardı meşgul eden 1-2 vuruşun ardından dışarıdan gelen sol kroşe.",
       JSON.stringify(["1 - Jab", "2 - Cross", "3 - Lead Hook"]),
       0,
     ],
     [
       "c-3",
-      "Body-Head Destruction",
-      "Slip outside the jab, blast a power uppercut, finish upstairs.",
-      JSON.stringify(["1 - Jab", "Slip Right", "6 - Body Uppercut", "3 - Lead Hook"]),
+      "Gövde - Baş Yıkımı",
+      "Eskiş ile atağı savuşturup gövdeye patlayıcı aparkat ve başa kroşe.",
+      JSON.stringify(["1 - Jab", "Slip Sağ", "6 - Gövde Aparkat", "3 - Kafa Kroşe"]),
       0,
     ],
   ];
@@ -273,13 +288,13 @@ async function seedInitialData(db: SQLiteDatabase): Promise<void> {
     );
   }
 
-  // 5. Achievements
+  // 4. Achievement Definitions (all start locked)
   const achievements = [
-    ["ach-1", "FIRST_BLOOD", "First Workout", "Complete your first logged workout session", "flash", 1, 1, now],
-    ["ach-2", "CENTURY_SQUAT", "Century Squatter", "Record a squat of 100 kg or greater", "barbell", 100, 100, now],
-    ["ach-3", "TWELVE_ROUNDS", "Championship Distance", "Survive 12 rounds in the Boxing Lab", "flame", 12, 12, now],
-    ["ach-4", "STREAK_4W", "Iron Discipline", "Train 4 consecutive weeks without missing a scheduled day", "trending-up", 4, 3, null],
-    ["ach-5", "BENCH_BEAST", "Heavy Presser", "Bench press over 100 kg", "trophy", 100, 120, now],
+    ["ach-1", "FIRST_BLOOD", "İlk Adım", "İlk antrenman seansınızı tamamlayın", "flash", 1, 0, null],
+    ["ach-2", "CENTURY_SQUAT", "100+ kg Squat", "Squat hareketinde 100 kg ve üzeri rekor kırın", "barbell", 100, 0, null],
+    ["ach-3", "TWELVE_ROUNDS", "12 Raunt Şampiyonu", "Boks sayacında tek seansta 12 raunt tamamlayın", "flame", 12, 0, null],
+    ["ach-4", "STREAK_4W", "Çelik İrade", "4 hafta üst üste antrenman programını aksatmayın", "trending-up", 4, 0, null],
+    ["ach-5", "BENCH_BEAST", "100 kg Bench Press", "Bench press hareketinde 100 kg barajını aşın", "trophy", 100, 0, null],
   ];
 
   for (const a of achievements) {
@@ -288,23 +303,6 @@ async function seedInitialData(db: SQLiteDatabase): Promise<void> {
         (id, code, title, description, icon, target_value, current_value, unlocked_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?);`,
       a
-    );
-  }
-
-  // 6. Initial Personal Records
-  const prs = [
-    ["pr-1", "ex-bench", "Barbell Bench Press", "heaviest_weight", 120, 3, "kg", now, "Solid RPE 9"],
-    ["pr-2", "ex-squat", "Barbell Back Squat", "heaviest_weight", 160, 5, "kg", now, "Deep below parallel"],
-    ["pr-3", "ex-deadlift", "Conventional Deadlift", "heaviest_weight", 200, 1, "kg", now, "Smooth lockout"],
-    ["pr-4", "ex-ohp", "Overhead Press (OHP)", "heaviest_weight", 75, 4, "kg", now, "Strict form"],
-  ];
-
-  for (const pr of prs) {
-    await db.runAsync(
-      `INSERT OR IGNORE INTO personal_records 
-        (id, exercise_id, exercise_name, record_type, weight, reps, unit, achieved_at, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);`,
-      pr
     );
   }
 }

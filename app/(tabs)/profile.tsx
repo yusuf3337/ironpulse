@@ -1,11 +1,14 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { View, Text, Pressable, Alert } from "react-native";
+import { useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { StatCard } from "@/components/ui/StatCard";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { AthleteSetupModal } from "@/components/profile/AthleteSetupModal";
 import { useDatabase } from "@/db/useDatabase";
 import { AthleteProfile, BodyMeasurement } from "@/db/schema";
 import { useLanguage } from "@/context/LanguageContext";
@@ -16,21 +19,24 @@ export default function ProfileScreen(): React.JSX.Element {
 
   const [athlete, setAthlete] = useState<AthleteProfile | null>(null);
   const [measurements, setMeasurements] = useState<BodyMeasurement[]>([]);
-
-  useEffect(() => {
-    loadProfileData();
-  }, []);
+  const [showEditModal, setShowEditModal] = useState<boolean>(false);
 
   const loadProfileData = async () => {
     try {
       const p = await profileRepo.getProfile();
-      if (p) setAthlete(p);
+      setAthlete(p);
       const m = await profileRepo.getMeasurements();
       setMeasurements(m);
     } catch (err) {
       console.error("Failed to load profile", err);
     }
   };
+
+  useFocusEffect(
+    useCallback(() => {
+      loadProfileData();
+    }, [])
+  );
 
   const handleExportData = async () => {
     try {
@@ -52,8 +58,29 @@ export default function ProfileScreen(): React.JSX.Element {
     }
   };
 
+  const bmi =
+    athlete?.currentWeight && athlete?.height
+      ? profileRepo.calculateBMI(athlete.currentWeight, athlete.height)
+      : null;
+
+  const sexLabel =
+    athlete?.sex === "male"
+      ? language === "tr" ? "Erkek" : "Male"
+      : athlete?.sex === "female"
+      ? language === "tr" ? "Kadın" : "Female"
+      : language === "tr" ? "Belirtilmedi" : "Not specified";
+
   return (
     <ScreenContainer scrollable>
+      {/* Edit Profile Modal */}
+      <AthleteSetupModal
+        visible={showEditModal}
+        onClose={() => setShowEditModal(false)}
+        onSaved={loadProfileData}
+        initialProfile={athlete}
+        isFirstTime={false}
+      />
+
       {/* Header */}
       <View className="mb-4 pt-1">
         <Text className="text-[11px] font-bold uppercase tracking-widest text-primary">
@@ -69,7 +96,7 @@ export default function ProfileScreen(): React.JSX.Element {
         title={t("languageSetting")}
         subtitle={t("languageSub")}
       />
-      <Card className="p-2 mb-5">
+      <Card className="p-1.5 mb-5">
         <View className="flex-row">
           <Pressable
             onPress={() => setLanguage("tr")}
@@ -109,64 +136,109 @@ export default function ProfileScreen(): React.JSX.Element {
         </View>
       </Card>
 
-      {/* Athlete Card */}
+      {/* Athlete Information Card */}
       <Card variant="highlight" className="p-4 sm:p-5 mb-5">
-        <View className="flex-row items-center mb-3.5">
-          <View className="h-14 w-14 rounded-2xl bg-surfaceHover border border-primary/40 items-center justify-center mr-3.5">
-            <Ionicons name="person" size={26} color="#CCFF00" />
-          </View>
-          <View className="flex-1">
-            <Text className="text-xl font-black text-textPrimary">
-              {athlete?.displayName || (language === "tr" ? "Demir Sporcu" : "Iron Athlete")}
-            </Text>
-            <Text className="text-xs text-textSecondary font-medium">
-              {t("offlineAthlete")} • {athlete?.age ? `${athlete.age} yaş` : "Aktif"}
-            </Text>
-            <View className="flex-row items-center mt-1">
-              <View className="h-2 w-2 rounded-full bg-success mr-1.5" />
-              <Text className="text-[10px] font-bold text-success uppercase">
-                {t("localStorageActive")}
+        <View className="flex-row items-center justify-between mb-3.5">
+          <View className="flex-row items-center flex-1 mr-2">
+            <View className="h-14 w-14 rounded-2xl bg-surfaceHover border border-primary/40 items-center justify-center mr-3.5">
+              <Ionicons name="person" size={26} color="#CCFF00" />
+            </View>
+            <View className="flex-1">
+              <Text className="text-xl font-black text-textPrimary" numberOfLines={1}>
+                {athlete?.displayName || (language === "tr" ? "Sporcu" : "Athlete")}
               </Text>
+              <Text className="text-xs text-textSecondary font-medium">
+                {athlete?.age ? `${athlete.age} ${language === "tr" ? "yaş" : "yrs"} • ` : ""}{sexLabel}
+              </Text>
+              <View className="flex-row items-center mt-1">
+                <View className="h-2 w-2 rounded-full bg-success mr-1.5" />
+                <Text className="text-[10px] font-bold text-success uppercase">
+                  {t("localStorageActive")}
+                </Text>
+              </View>
             </View>
           </View>
+
+          <Button
+            title={language === "tr" ? "DÜZENLE" : "EDIT"}
+            size="sm"
+            variant="secondary"
+            onPress={() => setShowEditModal(true)}
+            icon={<Ionicons name="pencil" size={12} color="#CCFF00" />}
+          />
         </View>
 
-        <View className="flex-row gap-2 pt-2 border-t border-surfaceBorder">
+        {/* Biometrics Row */}
+        <View className="flex-row gap-2 pt-2.5 border-t border-surfaceBorder">
           <StatCard
             label={t("weight")}
-            value={athlete?.currentWeight ?? 82.5}
+            value={athlete?.currentWeight ?? "--"}
             unit={athlete?.preferredWeightUnit ?? "kg"}
             className="p-2.5"
           />
           <StatCard
             label={t("height")}
-            value={athlete?.height ?? 180}
+            value={athlete?.height ?? "--"}
             unit={athlete?.preferredDistanceUnit ?? "cm"}
             className="p-2.5"
           />
           <StatCard
-            label={t("storage")}
-            value="100%"
-            unit={t("local")}
-            highlight
+            label={language === "tr" ? "Cinsiyet" : "Sex"}
+            value={athlete?.sex === "male" ? "M" : athlete?.sex === "female" ? "F" : "-"}
             className="p-2.5"
           />
         </View>
+
+        {/* BMI Section */}
+        {bmi && (
+          <View className="mt-3.5 rounded-xl bg-surfaceHover p-3.5 border border-surfaceBorder">
+            <View className="flex-row items-center justify-between mb-1">
+              <Text className="text-[10px] font-black uppercase tracking-wider text-textSecondary">
+                {language === "tr" ? "VÜCUT KİTLE İNDEKSİ (BMI)" : "BODY MASS INDEX (BMI)"}
+              </Text>
+              <View
+                className={`px-2 py-0.5 rounded ${
+                  bmi.categoryKey === "normal"
+                    ? "bg-success/20"
+                    : bmi.categoryKey === "overweight"
+                    ? "bg-gold/20"
+                    : "bg-danger/20"
+                }`}
+              >
+                <Text
+                  className={`text-[10px] font-extrabold uppercase ${
+                    bmi.categoryKey === "normal"
+                      ? "text-success"
+                      : bmi.categoryKey === "overweight"
+                      ? "text-gold"
+                      : "text-danger"
+                  }`}
+                >
+                  {bmi.category}
+                </Text>
+              </View>
+            </View>
+
+            <View className="flex-row items-baseline justify-between mt-1">
+              <Text className="text-3xl font-black text-textPrimary">
+                {bmi.bmi}{" "}
+                <Text className="text-xs font-normal text-textMuted">kg/m²</Text>
+              </Text>
+              <Text className="text-[11px] font-bold text-textSecondary">
+                {language === "tr" ? "İdeal Kilo: " : "Ideal Weight: "}
+                <Text className="text-primary font-mono font-bold">
+                  {bmi.healthyWeightRange.min} - {bmi.healthyWeightRange.max} kg
+                </Text>
+              </Text>
+            </View>
+          </View>
+        )}
       </Card>
 
-      {/* Body Measurements & Journal */}
+      {/* Body Measurements & History */}
       <SectionHeader
         title={t("bodyMetrics")}
         subtitle={t("bodyMetricsSub")}
-        actionLabel={t("logMetric")}
-        onAction={() => {
-          Alert.alert(
-            t("logMetric"),
-            language === "tr"
-              ? "Kilo veya çevre ölçümü eklemek için değer giriniz."
-              : "Enter body weight or circumference measurement."
-          );
-        }}
       />
       <View className="gap-2.5 mb-5">
         {measurements.length > 0 ? (
@@ -174,7 +246,9 @@ export default function ProfileScreen(): React.JSX.Element {
             <Card key={item.id} className="p-3.5 flex-row items-center justify-between">
               <View>
                 <Text className="text-sm font-bold text-textPrimary capitalize">
-                  {item.measurementType}
+                  {item.measurementType === "weight"
+                    ? language === "tr" ? "Vücut Ağırlığı" : "Body Weight"
+                    : item.measurementType}
                 </Text>
                 <Text className="text-xs text-textSecondary mt-0.5">{item.notes || "Yerel kayıt"}</Text>
               </View>
@@ -189,39 +263,15 @@ export default function ProfileScreen(): React.JSX.Element {
             </Card>
           ))
         ) : (
-          [
-            {
-              label: language === "tr" ? "Vücut Ağırlığı" : "Body Weight",
-              current: `${athlete?.currentWeight ?? 82.5} kg`,
-              change: language === "tr" ? "Hedef: Yağsız Hipertrofi" : "Target: Lean Hypertrophy",
-            },
-            {
-              label: language === "tr" ? "Bel Çevresi" : "Waist Circumference",
-              current: "81 cm",
-              change: language === "tr" ? "Temel Başlangıç Değeri" : "Baseline Measurement",
-            },
-            {
-              label: language === "tr" ? "Göğüs Çevresi" : "Chest Circumference",
-              current: "108 cm",
-              change: language === "tr" ? "Temel Başlangıç Değeri" : "Baseline Measurement",
-            },
-            {
-              label: language === "tr" ? "Kol Çevresi" : "Arm Circumference",
-              current: "40.5 cm",
-              change: language === "tr" ? "Temel Başlangıç Değeri" : "Baseline Measurement",
-            },
-          ].map((item, idx) => (
-            <Card key={idx} className="p-3.5 flex-row items-center justify-between">
-              <View>
-                <Text className="text-sm font-bold text-textPrimary">{item.label}</Text>
-                <Text className="text-xs text-textSecondary mt-0.5">{item.change}</Text>
-              </View>
-              <View className="items-end">
-                <Text className="text-base font-black text-textPrimary">{item.current}</Text>
-                <Text className="text-[10px] text-textMuted font-mono">{t("local")}</Text>
-              </View>
-            </Card>
-          ))
+          <EmptyState
+            icon={<Ionicons name="body-outline" size={32} color="#6B6B78" />}
+            title={language === "tr" ? "Ölçüm Geçmişi Boş" : "No Measurements Yet"}
+            description={
+              language === "tr"
+                ? "Profilinizi güncelledikçe kilo ve vücut ölçü geçmişiniz burada listelenecektir."
+                : "Your body weight and metric logs will be stored here as you update your profile."
+            }
+          />
         )}
       </View>
 

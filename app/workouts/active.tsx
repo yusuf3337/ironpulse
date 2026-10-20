@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { View, Text, Pressable, ScrollView, Alert } from "react-native";
+import { View, Text, Pressable, ScrollView, Alert, TextInput } from "react-native";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -7,6 +7,7 @@ import * as Haptics from "expo-haptics";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { useLanguage } from "@/context/LanguageContext";
+import { useDatabase } from "@/db/useDatabase";
 
 interface ExerciseSet {
   id: string;
@@ -26,28 +27,39 @@ interface WorkoutExercise {
 
 export default function ActiveWorkoutScreen(): React.JSX.Element {
   const insets = useSafeAreaInsets();
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
+  const { workouts: workoutRepo, prs: prRepo } = useDatabase();
 
   const [exercises, setExercises] = useState<WorkoutExercise[]>([
     {
-      id: "ex-1",
+      id: "ex-bench",
       name: "Barbell Bench Press",
-      category: "Göğüs",
-      previousBest: "115 kg × 6 tekrar",
+      category: language === "tr" ? "Göğüs" : "Chest",
+      previousBest: language === "tr" ? "İlk Set" : "Initial Set",
       sets: [
-        { id: "s-1", setNumber: 1, weight: "100", reps: "8", completed: true },
-        { id: "s-2", setNumber: 2, weight: "105", reps: "8", completed: false },
-        { id: "s-3", setNumber: 3, weight: "110", reps: "6", completed: false },
+        { id: "s-1", setNumber: 1, weight: "60", reps: "10", completed: false },
+        { id: "s-2", setNumber: 2, weight: "70", reps: "8", completed: false },
+        { id: "s-3", setNumber: 3, weight: "80", reps: "6", completed: false },
       ],
     },
     {
-      id: "ex-2",
+      id: "ex-inc-db",
       name: "Incline Dumbbell Press",
-      category: "Üst Göğüs",
-      previousBest: "36 kg × 8 tekrar",
+      category: language === "tr" ? "Üst Göğüs" : "Upper Chest",
+      previousBest: language === "tr" ? "İlk Set" : "Initial Set",
       sets: [
-        { id: "s-4", setNumber: 1, weight: "34", reps: "10", completed: false },
-        { id: "s-5", setNumber: 2, weight: "36", reps: "8", completed: false },
+        { id: "s-4", setNumber: 1, weight: "24", reps: "10", completed: false },
+        { id: "s-5", setNumber: 2, weight: "26", reps: "8", completed: false },
+      ],
+    },
+    {
+      id: "ex-ohp",
+      name: "Overhead Press (OHP)",
+      category: language === "tr" ? "Omuz" : "Shoulders",
+      previousBest: language === "tr" ? "İlk Set" : "Initial Set",
+      sets: [
+        { id: "s-6", setNumber: 1, weight: "40", reps: "8", completed: false },
+        { id: "s-7", setNumber: 2, weight: "45", reps: "6", completed: false },
       ],
     },
   ]);
@@ -58,7 +70,9 @@ export default function ActiveWorkoutScreen(): React.JSX.Element {
   const handleClose = () => {
     Alert.alert(
       t("activeSession"),
-      "Mevcut antrenmandan çıkmak istediğinize emin misiniz?",
+      language === "tr"
+        ? "Mevcut antrenmandan çıkmak istediğinize emin misiniz?"
+        : "Are you sure you want to exit this workout session?",
       [
         { text: t("cancel"), style: "cancel" },
         {
@@ -91,20 +105,101 @@ export default function ActiveWorkoutScreen(): React.JSX.Element {
     );
   };
 
-  const handleFinish = () => {
+  const handleUpdateSetWeight = (setId: string, val: string) => {
+    setExercises((prev) =>
+      prev.map((ex, idx) => {
+        if (idx !== activeExerciseIndex) return ex;
+        return {
+          ...ex,
+          sets: ex.sets.map((s) => (s.id === setId ? { ...s, weight: val } : s)),
+        };
+      })
+    );
+  };
+
+  const handleUpdateSetReps = (setId: string, val: string) => {
+    setExercises((prev) =>
+      prev.map((ex, idx) => {
+        if (idx !== activeExerciseIndex) return ex;
+        return {
+          ...ex,
+          sets: ex.sets.map((s) => (s.id === setId ? { ...s, reps: val } : s)),
+        };
+      })
+    );
+  };
+
+  const handleFinish = async () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    Alert.alert(t("finish"), t("workoutFinishedAlert"), [
-      {
-        text: "Tamam",
-        onPress: () => {
-          if (router.canGoBack()) {
-            router.back();
-          } else {
-            router.replace("/(tabs)/train");
+
+    try {
+      const now = new Date().toISOString();
+      const allSetsToSave: Array<{
+        exerciseId: string;
+        exerciseName: string;
+        setNumber: number;
+        weight: number;
+        reps: number;
+        completed: boolean;
+        createdAt: string;
+      }> = [];
+
+      for (const ex of exercises) {
+        for (const s of ex.sets) {
+          if (s.completed) {
+            const weightNum = parseFloat(s.weight) || 0;
+            const repsNum = parseInt(s.reps, 10) || 0;
+
+            allSetsToSave.push({
+              exerciseId: ex.id,
+              exerciseName: ex.name,
+              setNumber: s.setNumber,
+              weight: weightNum,
+              reps: repsNum,
+              completed: true,
+              createdAt: now,
+            });
+
+            // Check if this set is a new PR!
+            if (weightNum > 0 && repsNum > 0) {
+              await prRepo.checkAndSavePR(ex.id, ex.name, weightNum, repsNum, "kg");
+            }
           }
+        }
+      }
+
+      if (allSetsToSave.length > 0) {
+        await workoutRepo.saveCompletedSession(
+          {
+            programId: null,
+            programDayId: null,
+            sessionName: language === "tr" ? "Üst Vücut Güç" : "Upper Body Power",
+            sessionType: "Upper Body",
+            startedAt: now,
+            completedAt: now,
+            status: "completed",
+            durationSeconds: 2700,
+            notes: "Kaydedilen seans",
+          },
+          allSetsToSave
+        );
+      }
+
+      Alert.alert(t("finish"), t("workoutFinishedAlert"), [
+        {
+          text: "Tamam",
+          onPress: () => {
+            if (router.canGoBack()) {
+              router.back();
+            } else {
+              router.replace("/(tabs)/train");
+            }
+          },
         },
-      },
-    ]);
+      ]);
+    } catch (err: any) {
+      Alert.alert("Error", err.message || "Failed to save workout session");
+    }
   };
 
   return (
@@ -129,7 +224,7 @@ export default function ActiveWorkoutScreen(): React.JSX.Element {
             {t("activeSession")}
           </Text>
           <Text className="text-sm font-black text-textPrimary">
-            Üst Vücut Güç (Upper Body)
+            {language === "tr" ? "Üst Vücut Güç" : "Upper Body Power"}
           </Text>
         </View>
         <Button
@@ -162,7 +257,7 @@ export default function ActiveWorkoutScreen(): React.JSX.Element {
           </View>
         </Card>
 
-        {/* Set Logger Table */}
+        {/* Set Logger Table with editable weight & reps */}
         <View className="mb-4">
           <View className="flex-row px-2 mb-2 items-center">
             <Text className="w-12 text-[10px] font-bold uppercase tracking-wider text-textMuted">
@@ -181,10 +276,9 @@ export default function ActiveWorkoutScreen(): React.JSX.Element {
 
           <View className="gap-2">
             {currentExercise.sets.map((set) => (
-              <Pressable
+              <View
                 key={set.id}
-                onPress={() => handleToggleSet(set.id)}
-                className={`flex-row items-center p-3 rounded-xl border ${
+                className={`flex-row items-center p-2.5 rounded-xl border ${
                   set.completed
                     ? "bg-primary/10 border-primary/40"
                     : "bg-surface border-surfaceBorder"
@@ -197,26 +291,39 @@ export default function ActiveWorkoutScreen(): React.JSX.Element {
                 >
                   #{set.setNumber}
                 </Text>
-                <Text className="flex-1 text-center text-base font-bold font-mono text-textPrimary">
-                  {set.weight}
-                </Text>
-                <Text className="flex-1 text-center text-base font-bold font-mono text-textPrimary">
-                  {set.reps}
-                </Text>
-                <View className="w-16 items-end">
+
+                <TextInput
+                  value={set.weight}
+                  onChangeText={(val) => handleUpdateSetWeight(set.id, val)}
+                  keyboardType="numeric"
+                  className="flex-1 text-center text-base font-bold font-mono text-textPrimary bg-surfaceHover py-1 rounded-lg border border-surfaceBorder mx-1"
+                />
+
+                <TextInput
+                  value={set.reps}
+                  onChangeText={(val) => handleUpdateSetReps(set.id, val)}
+                  keyboardType="numeric"
+                  className="flex-1 text-center text-base font-bold font-mono text-textPrimary bg-surfaceHover py-1 rounded-lg border border-surfaceBorder mx-1"
+                />
+
+                <Pressable
+                  onPress={() => handleToggleSet(set.id)}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  className="w-16 items-end"
+                >
                   <View
-                    className={`h-7 w-7 rounded-lg items-center justify-center ${
+                    className={`h-8 w-8 rounded-lg items-center justify-center ${
                       set.completed ? "bg-primary" : "bg-surfaceHover border border-surfaceBorder"
                     }`}
                   >
                     <Ionicons
                       name="checkmark"
-                      size={16}
+                      size={18}
                       color={set.completed ? "#000" : "#6B6B78"}
                     />
                   </View>
-                </View>
-              </Pressable>
+                </Pressable>
+              </View>
             ))}
           </View>
         </View>

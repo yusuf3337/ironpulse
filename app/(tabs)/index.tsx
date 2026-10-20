@@ -1,6 +1,6 @@
-import React from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { View, Text, Pressable } from "react-native";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { Card } from "@/components/ui/Card";
@@ -8,9 +8,49 @@ import { Button } from "@/components/ui/Button";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { StatCard } from "@/components/ui/StatCard";
 import { useLanguage } from "@/context/LanguageContext";
+import { useDatabase } from "@/db/useDatabase";
+import { AthleteSetupModal } from "@/components/profile/AthleteSetupModal";
+import { AthleteProfile } from "@/db/schema";
 
 export default function HomeScreen(): React.JSX.Element {
   const { t, language } = useLanguage();
+  const { profile: profileRepo, workouts: workoutRepo, boxing: boxingRepo, prs: prRepo } = useDatabase();
+
+  const [athlete, setAthlete] = useState<AthleteProfile | null>(null);
+  const [showSetupModal, setShowSetupModal] = useState<boolean>(false);
+
+  // Real stats from SQLite
+  const [weeklySessions, setWeeklySessions] = useState<number>(0);
+  const [weeklyBoxingRounds, setWeeklyBoxingRounds] = useState<number>(0);
+  const [prCount, setPrCount] = useState<number>(0);
+
+  const loadData = async () => {
+    try {
+      const isConfigured = await profileRepo.isProfileConfigured();
+      if (!isConfigured) {
+        setShowSetupModal(true);
+      }
+      const p = await profileRepo.getProfile();
+      setAthlete(p);
+
+      const sess = await workoutRepo.getSessionsCountThisWeek();
+      setWeeklySessions(sess);
+
+      const rounds = await boxingRepo.getRoundsCompletedThisWeek();
+      setWeeklyBoxingRounds(rounds);
+
+      const allPrs = await prRepo.getAllPRs();
+      setPrCount(allPrs.length);
+    } catch (err) {
+      console.error("Home load error:", err);
+    }
+  };
+
+  useFocusEffect(
+    useCallback(() => {
+      loadData();
+    }, [])
+  );
 
   const todayName = new Date().toLocaleDateString(
     language === "tr" ? "tr-TR" : "en-US",
@@ -23,6 +63,15 @@ export default function HomeScreen(): React.JSX.Element {
 
   return (
     <ScreenContainer scrollable>
+      {/* Athlete Onboarding Modal (appears on first run if profile is empty) */}
+      <AthleteSetupModal
+        visible={showSetupModal}
+        onClose={() => setShowSetupModal(false)}
+        onSaved={loadData}
+        initialProfile={athlete}
+        isFirstTime={!athlete || !athlete.height}
+      />
+
       {/* Top Header */}
       <View className="flex-row items-center justify-between mb-5 pt-1">
         <View className="flex-1 mr-2">
@@ -53,7 +102,7 @@ export default function HomeScreen(): React.JSX.Element {
           <View className="flex-row items-center">
             <Ionicons name="time-outline" size={14} color="#9E9EA8" />
             <Text className="ml-1 text-xs text-textSecondary font-semibold">
-              ~55 dk
+              ~50 dk
             </Text>
           </View>
         </View>
@@ -82,7 +131,7 @@ export default function HomeScreen(): React.JSX.Element {
         </View>
       </Card>
 
-      {/* Weekly Stats Row (responsive flex-row without rigid min-width) */}
+      {/* Weekly Stats Row (Real SQLite counts, start at 0) */}
       <SectionHeader
         title={t("weeklyPerformance")}
         subtitle={t("weeklySubtitle")}
@@ -90,20 +139,21 @@ export default function HomeScreen(): React.JSX.Element {
       <View className="flex-row gap-2 sm:gap-3 mb-5">
         <StatCard
           label={t("sessionsStat")}
-          value="4"
+          value={weeklySessions}
           unit={t("thisWk")}
-          highlight
+          highlight={weeklySessions > 0}
           icon={<Ionicons name="barbell" size={15} color="#CCFF00" />}
         />
         <StatCard
           label={t("boxingStat")}
-          value="18"
+          value={weeklyBoxingRounds}
           unit={t("roundsUnit")}
+          highlight={weeklyBoxingRounds > 0}
           icon={<Ionicons name="flame" size={15} color="#9E9EA8" />}
         />
         <StatCard
           label={t("prStat")}
-          value="2"
+          value={prCount}
           unit={t("recordsUnit")}
           gold
           icon={<Ionicons name="trophy" size={15} color="#E5A93C" />}

@@ -1,17 +1,19 @@
 import React, { useState, useEffect, useRef } from "react";
-import { View, Text, Pressable } from "react-native";
+import { View, Text, Pressable, Alert } from "react-native";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Button } from "@/components/ui/Button";
 import { useLanguage } from "@/context/LanguageContext";
+import { useDatabase } from "@/db/useDatabase";
 
 type TimerPhase = "prep" | "work" | "rest" | "finished";
 
 export default function BoxingTimerScreen(): React.JSX.Element {
   const insets = useSafeAreaInsets();
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
+  const { boxing: boxingRepo } = useDatabase();
 
   const [totalRounds, setTotalRounds] = useState<number>(6);
   const [workDuration, setWorkDuration] = useState<number>(180); // 3 mins
@@ -63,6 +65,20 @@ export default function BoxingTimerScreen(): React.JSX.Element {
               setPhase("finished");
               setIsActive(false);
               triggerTransitionHaptics("finished");
+
+              // Save completed session to SQLite
+              const now = new Date().toISOString();
+              boxingRepo.saveSession({
+                presetName: "Standart Sparring",
+                completedRounds: totalRounds,
+                totalRounds,
+                workSeconds: workDuration,
+                restSeconds: restDuration,
+                startedAt: now,
+                completedAt: now,
+                notes: "Boks seansı tamamlandı",
+              }).catch(console.error);
+
               return 0;
             } else {
               setPhase("rest");
@@ -121,7 +137,7 @@ export default function BoxingTimerScreen(): React.JSX.Element {
         paddingBottom: Math.max(insets.bottom, 20) + 12,
       }}
     >
-      {/* Top Bar with guaranteed safe clearance and large hitSlop */}
+      {/* Top Bar with safe area clearance */}
       <View className="flex-row items-center justify-between">
         <Pressable
           onPress={handleClose}
