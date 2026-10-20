@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { View, Text, Pressable, ScrollView, Alert, TextInput } from "react-native";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -28,43 +28,86 @@ interface WorkoutExercise {
 export default function ActiveWorkoutScreen(): React.JSX.Element {
   const insets = useSafeAreaInsets();
   const { t, language } = useLanguage();
-  const { workouts: workoutRepo, prs: prRepo } = useDatabase();
+  const { workouts: workoutRepo, prs: prRepo, programs: programRepo } = useDatabase();
 
-  const [exercises, setExercises] = useState<WorkoutExercise[]>([
-    {
-      id: "ex-bench",
-      name: "Barbell Bench Press",
-      category: language === "tr" ? "Göğüs" : "Chest",
-      previousBest: language === "tr" ? "İlk Set" : "Initial Set",
-      sets: [
-        { id: "s-1", setNumber: 1, weight: "60", reps: "10", completed: false },
-        { id: "s-2", setNumber: 2, weight: "70", reps: "8", completed: false },
-        { id: "s-3", setNumber: 3, weight: "80", reps: "6", completed: false },
-      ],
-    },
-    {
-      id: "ex-inc-db",
-      name: "Incline Dumbbell Press",
-      category: language === "tr" ? "Üst Göğüs" : "Upper Chest",
-      previousBest: language === "tr" ? "İlk Set" : "Initial Set",
-      sets: [
-        { id: "s-4", setNumber: 1, weight: "24", reps: "10", completed: false },
-        { id: "s-5", setNumber: 2, weight: "26", reps: "8", completed: false },
-      ],
-    },
-    {
-      id: "ex-ohp",
-      name: "Overhead Press (OHP)",
-      category: language === "tr" ? "Omuz" : "Shoulders",
-      previousBest: language === "tr" ? "İlk Set" : "Initial Set",
-      sets: [
-        { id: "s-6", setNumber: 1, weight: "40", reps: "8", completed: false },
-        { id: "s-7", setNumber: 2, weight: "45", reps: "6", completed: false },
-      ],
-    },
-  ]);
-
+  const [sessionTitle, setSessionTitle] = useState<string>("Antrenman Seansı");
+  const [exercises, setExercises] = useState<WorkoutExercise[]>([]);
   const [activeExerciseIndex, setActiveExerciseIndex] = useState<number>(0);
+  const [isLoaded, setIsLoaded] = useState<boolean>(false);
+
+  useEffect(() => {
+    loadTodayRoutine();
+  }, []);
+
+  const loadTodayRoutine = async () => {
+    try {
+      const weekdaysKeys = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+      const currentDayKey = weekdaysKeys[new Date().getDay()];
+
+      const routine = await programRepo.getDayRoutine(currentDayKey);
+      setSessionTitle(routine.title || (language === "tr" ? "Antrenman Seansı" : "Workout Session"));
+
+      if (routine.exercises && routine.exercises.length > 0) {
+        const loaded: WorkoutExercise[] = [];
+        for (const ex of routine.exercises) {
+          const prev = await workoutRepo.getPreviousBest(ex.exerciseName);
+          const setsCount = ex.targetSets || 3;
+          const initialSets: ExerciseSet[] = [];
+
+          for (let s = 1; s <= setsCount; s++) {
+            initialSets.push({
+              id: `s-${ex.exerciseId}-${s}`,
+              setNumber: s,
+              weight: prev ? String(prev.weight) : "",
+              reps: prev ? String(prev.reps) : "10",
+              completed: false,
+            });
+          }
+
+          loaded.push({
+            id: ex.exerciseId,
+            name: ex.exerciseName,
+            category: "Egzersiz",
+            previousBest: prev
+              ? `${prev.weight} kg × ${prev.reps} tekrar`
+              : language === "tr" ? "Kayıt Yok" : "No Records",
+            sets: initialSets,
+          });
+        }
+        setExercises(loaded);
+      } else {
+        // Fallback default exercises if user hasn't customized today yet
+        setExercises([
+          {
+            id: "ch-bar-1",
+            name: "Barbell Bench Press",
+            category: "Göğüs",
+            previousBest: language === "tr" ? "İlk Set" : "Initial",
+            sets: [
+              { id: "s-1", setNumber: 1, weight: "", reps: "10", completed: false },
+              { id: "s-2", setNumber: 2, weight: "", reps: "8", completed: false },
+              { id: "s-3", setNumber: 3, weight: "", reps: "6", completed: false },
+            ],
+          },
+          {
+            id: "bk-bar-1",
+            name: "Barbell Bent-Over Row",
+            category: "Sırt",
+            previousBest: language === "tr" ? "İlk Set" : "Initial",
+            sets: [
+              { id: "s-4", setNumber: 1, weight: "", reps: "10", completed: false },
+              { id: "s-5", setNumber: 2, weight: "", reps: "8", completed: false },
+            ],
+          },
+        ]);
+      }
+      setIsLoaded(true);
+    } catch (err) {
+      console.error("Failed to load today routine:", err);
+      setIsLoaded(true);
+    }
+  };
+
   const currentExercise = exercises[activeExerciseIndex];
 
   const handleClose = () => {
@@ -129,6 +172,31 @@ export default function ActiveWorkoutScreen(): React.JSX.Element {
     );
   };
 
+  const handleAddSet = () => {
+    if (!currentExercise) return;
+    const newSetNumber = currentExercise.sets.length + 1;
+    const lastSet = currentExercise.sets[currentExercise.sets.length - 1];
+
+    setExercises((prev) =>
+      prev.map((ex, idx) => {
+        if (idx !== activeExerciseIndex) return ex;
+        return {
+          ...ex,
+          sets: [
+            ...ex.sets,
+            {
+              id: `s-${ex.id}-${newSetNumber}-${Date.now()}`,
+              setNumber: newSetNumber,
+              weight: lastSet ? lastSet.weight : "",
+              reps: lastSet ? lastSet.reps : "10",
+              completed: false,
+            },
+          ],
+        };
+      })
+    );
+  };
+
   const handleFinish = async () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
@@ -160,7 +228,7 @@ export default function ActiveWorkoutScreen(): React.JSX.Element {
               createdAt: now,
             });
 
-            // Check if this set is a new PR!
+            // Auto-check and record PR if this set is highest!
             if (weightNum > 0 && repsNum > 0) {
               await prRepo.checkAndSavePR(ex.id, ex.name, weightNum, repsNum, "kg");
             }
@@ -173,8 +241,8 @@ export default function ActiveWorkoutScreen(): React.JSX.Element {
           {
             programId: null,
             programDayId: null,
-            sessionName: language === "tr" ? "Üst Vücut Güç" : "Upper Body Power",
-            sessionType: "Upper Body",
+            sessionName: sessionTitle,
+            sessionType: "Workout",
             startedAt: now,
             completedAt: now,
             status: "completed",
@@ -202,6 +270,14 @@ export default function ActiveWorkoutScreen(): React.JSX.Element {
     }
   };
 
+  if (!isLoaded || !currentExercise) {
+    return (
+      <View className="flex-1 bg-background items-center justify-center">
+        <Text className="text-sm font-bold text-textSecondary">{t("loading")}</Text>
+      </View>
+    );
+  }
+
   return (
     <View
       className="flex-1 bg-background justify-between"
@@ -219,12 +295,12 @@ export default function ActiveWorkoutScreen(): React.JSX.Element {
         >
           <Ionicons name="close" size={20} color="#F4F4F6" />
         </Pressable>
-        <View className="items-center">
+        <View className="items-center flex-1 mx-2">
           <Text className="text-[10px] font-bold text-primary uppercase tracking-widest">
             {t("activeSession")}
           </Text>
-          <Text className="text-sm font-black text-textPrimary">
-            {language === "tr" ? "Üst Vücut Güç" : "Upper Body Power"}
+          <Text className="text-sm font-black text-textPrimary" numberOfLines={1}>
+            {sessionTitle}
           </Text>
         </View>
         <Button
@@ -257,7 +333,7 @@ export default function ActiveWorkoutScreen(): React.JSX.Element {
           </View>
         </Card>
 
-        {/* Set Logger Table with editable weight & reps */}
+        {/* Set Logger Table with live weight & reps inputs */}
         <View className="mb-4">
           <View className="flex-row px-2 mb-2 items-center">
             <Text className="w-12 text-[10px] font-bold uppercase tracking-wider text-textMuted">
@@ -296,6 +372,8 @@ export default function ActiveWorkoutScreen(): React.JSX.Element {
                   value={set.weight}
                   onChangeText={(val) => handleUpdateSetWeight(set.id, val)}
                   keyboardType="numeric"
+                  placeholder="kg"
+                  placeholderTextColor="#6B6B78"
                   className="flex-1 text-center text-base font-bold font-mono text-textPrimary bg-surfaceHover py-1 rounded-lg border border-surfaceBorder mx-1"
                 />
 
@@ -303,6 +381,8 @@ export default function ActiveWorkoutScreen(): React.JSX.Element {
                   value={set.reps}
                   onChangeText={(val) => handleUpdateSetReps(set.id, val)}
                   keyboardType="numeric"
+                  placeholder="rep"
+                  placeholderTextColor="#6B6B78"
                   className="flex-1 text-center text-base font-bold font-mono text-textPrimary bg-surfaceHover py-1 rounded-lg border border-surfaceBorder mx-1"
                 />
 
@@ -326,10 +406,21 @@ export default function ActiveWorkoutScreen(): React.JSX.Element {
               </View>
             ))}
           </View>
+
+          {/* Add Set Button */}
+          <Pressable
+            onPress={handleAddSet}
+            className="mt-3 py-2.5 items-center justify-center rounded-xl bg-surfaceHover border border-surfaceBorder flex-row"
+          >
+            <Ionicons name="add" size={16} color="#CCFF00" />
+            <Text className="ml-1 text-xs font-bold text-primary">
+              {language === "tr" ? "+ SET EKLE" : "+ ADD SET"}
+            </Text>
+          </Pressable>
         </View>
 
         {/* Pagination between exercises */}
-        <View className="flex-row gap-3 mt-4">
+        <View className="flex-row gap-3 mt-4 mb-8">
           {activeExerciseIndex > 0 && (
             <Button
               title={t("prevExercise")}

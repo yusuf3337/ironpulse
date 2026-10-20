@@ -5,6 +5,7 @@ import { WorkoutRepository } from "./repositories/workoutRepo";
 import { PersonalRecordRepository } from "./repositories/prRepo";
 import { BoxingRepository } from "./repositories/boxingRepo";
 import { BackupRepository } from "./repositories/backupRepo";
+import { ProgramRepository } from "./repositories/programRepo";
 
 export function useDatabase() {
   const db = useSQLiteContext();
@@ -17,6 +18,7 @@ export function useDatabase() {
       prs: new PersonalRecordRepository(db),
       boxing: new BoxingRepository(db),
       backup: new BackupRepository(db),
+      programs: new ProgramRepository(db),
     };
   }, [db]);
 }

@@ -235,7 +235,6 @@ export function AthleteSetupModal({
                   {[
                     { key: "male", label: language === "tr" ? "Erkek" : "Male" },
                     { key: "female", label: language === "tr" ? "Kadın" : "Female" },
-                    { key: "other", label: language === "tr" ? "Diğer" : "Other" },
                   ].map((item) => (
                     <Pressable
                       key={item.key}
