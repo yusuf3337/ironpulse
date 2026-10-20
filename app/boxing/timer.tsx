@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { View, Text, Pressable, Alert } from "react-native";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -14,15 +14,28 @@ export default function BoxingTimerScreen(): React.JSX.Element {
   const insets = useSafeAreaInsets();
   const { t, language } = useLanguage();
   const { boxing: boxingRepo } = useDatabase();
+  const params = useLocalSearchParams<{
+    rounds?: string;
+    work?: string;
+    rest?: string;
+    prep?: string;
+    title?: string;
+  }>();
 
-  const [totalRounds, setTotalRounds] = useState<number>(6);
-  const [workDuration, setWorkDuration] = useState<number>(180); // 3 mins
-  const [restDuration, setRestDuration] = useState<number>(60); // 1 min
-  const [prepDuration, setPrepDuration] = useState<number>(10); // 10 secs
+  const initialRounds = params.rounds ? parseInt(params.rounds, 10) : 6;
+  const initialWork = params.work ? parseInt(params.work, 10) : 180;
+  const initialRest = params.rest ? parseInt(params.rest, 10) : 60;
+  const initialPrep = params.prep ? parseInt(params.prep, 10) : 10;
+  const timerTitle = params.title || (language === "tr" ? "Boks Raunt Sayacı" : "Boxing Round Timer");
+
+  const [totalRounds, setTotalRounds] = useState<number>(initialRounds);
+  const [workDuration, setWorkDuration] = useState<number>(initialWork);
+  const [restDuration, setRestDuration] = useState<number>(initialRest);
+  const [prepDuration, setPrepDuration] = useState<number>(initialPrep);
 
   const [currentRound, setCurrentRound] = useState<number>(1);
   const [phase, setPhase] = useState<TimerPhase>("prep");
-  const [secondsRemaining, setSecondsRemaining] = useState<number>(10);
+  const [secondsRemaining, setSecondsRemaining] = useState<number>(initialPrep);
   const [isActive, setIsActive] = useState<boolean>(false);
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -69,7 +82,7 @@ export default function BoxingTimerScreen(): React.JSX.Element {
               // Save completed session to SQLite
               const now = new Date().toISOString();
               boxingRepo.saveSession({
-                presetName: "Standart Sparring",
+                presetName: timerTitle,
                 completedRounds: totalRounds,
                 totalRounds,
                 workSeconds: workDuration,
@@ -99,7 +112,7 @@ export default function BoxingTimerScreen(): React.JSX.Element {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [isActive, phase, currentRound, totalRounds, workDuration, restDuration]);
+  }, [isActive, phase, currentRound, totalRounds, workDuration, restDuration, timerTitle]);
 
   const handleToggle = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -146,15 +159,21 @@ export default function BoxingTimerScreen(): React.JSX.Element {
         >
           <Ionicons name="close" size={22} color="#F4F4F6" />
         </Pressable>
-        <View className="items-center">
-          <Text className="text-[10px] font-bold uppercase tracking-widest text-textSecondary">
-            {t("boxingSubtitle")}
+        <View className="items-center flex-1 mx-2">
+          <Text className="text-[10px] font-bold uppercase tracking-widest text-textSecondary" numberOfLines={1}>
+            {timerTitle}
           </Text>
           <Text className="text-base font-black text-textPrimary">
-            {t("boxingTimerHeader")}
+            {formatTime(workDuration)} {language === "tr" ? "Çalışma" : "Work"} • {restDuration}s {language === "tr" ? "Dinlenme" : "Rest"}
           </Text>
         </View>
-        <View className="w-11" />
+        <Pressable
+          onPress={handleReset}
+          hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}
+          className="h-11 w-11 items-center justify-center rounded-full bg-surface border border-surfaceBorder active:opacity-75"
+        >
+          <Ionicons name="refresh" size={18} color="#CCFF00" />
+        </Pressable>
       </View>
 
       {/* Main Display */}

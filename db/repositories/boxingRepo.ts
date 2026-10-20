@@ -6,7 +6,7 @@ export class BoxingRepository {
 
   async getPresets(): Promise<BoxingPreset[]> {
     const rows = await this.db.getAllAsync<any>(
-      "SELECT * FROM boxing_presets ORDER BY rounds DESC;"
+      "SELECT * FROM boxing_presets ORDER BY rounds ASC, work_seconds ASC;"
     );
 
     return rows.map((r) => ({
@@ -39,6 +39,10 @@ export class BoxingRepository {
       ]
     );
     return id;
+  }
+
+  async deletePreset(id: string): Promise<void> {
+    await this.db.runAsync("DELETE FROM boxing_presets WHERE id = ?;", [id]);
   }
 
   async saveSession(session: Omit<BoxingSession, "id">): Promise<string> {
