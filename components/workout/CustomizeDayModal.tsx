@@ -8,7 +8,6 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
-  Alert,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Button } from "@/components/ui/Button";
@@ -20,6 +19,7 @@ import {
   CatalogExercise,
 } from "@/constants/exerciseCatalog";
 import { useLanguage } from "@/context/LanguageContext";
+import { useAlert } from "@/context/AlertModalContext";
 import { useDatabase } from "@/db/useDatabase";
 import { DayRoutine } from "@/db/repositories/programRepo";
 
@@ -49,6 +49,7 @@ export function CustomizeDayModal({
 }: CustomizeDayModalProps): React.JSX.Element {
   const { programs: programRepo } = useDatabase();
   const { language } = useLanguage();
+  const { showAlert } = useAlert();
 
   const [title, setTitle] = useState<string>("");
   const [isRest, setIsRest] = useState<boolean>(false);
@@ -93,12 +94,14 @@ export function CustomizeDayModal({
       (e) => e.exerciseId === catalogEx.id
     );
     if (alreadyExists) {
-      Alert.alert(
-        language === "tr" ? "Zaten Eklendi" : "Already Added",
-        language === "tr"
-          ? `${catalogEx.name} zaten bu günün listesinde mevcut.`
-          : `${catalogEx.name} is already in this day's routine.`
-      );
+      showAlert({
+        title: language === "tr" ? "Zaten Eklendi" : "Already Added",
+        message:
+          language === "tr"
+            ? `${catalogEx.name} zaten bu günün listesinde mevcut.`
+            : `${catalogEx.name} is already in this day's routine.`,
+        type: "warning",
+      });
       return;
     }
 
@@ -143,12 +146,14 @@ export function CustomizeDayModal({
         : language === "tr" ? "Özel Antrenman" : "Custom Workout");
 
     if (!isRest && selectedExercises.length === 0) {
-      Alert.alert(
-        language === "tr" ? "Hareket Seçilmedi" : "No Exercises Selected",
-        language === "tr"
-          ? "Lütfen bu gün için en az bir hareket ekleyin ya da günü 'Dinlenme Günü' olarak işaretleyin."
-          : "Please select at least one exercise or mark this day as a rest day."
-      );
+      showAlert({
+        title: language === "tr" ? "Hareket Seçilmedi" : "No Exercises Selected",
+        message:
+          language === "tr"
+            ? "Lütfen bu gün için en az bir hareket ekleyin ya da günü 'Dinlenme Günü' olarak işaretleyin."
+            : "Please select at least one exercise or mark this day as a rest day.",
+        type: "warning",
+      });
       return;
     }
 
@@ -162,7 +167,11 @@ export function CustomizeDayModal({
       onSaved();
       onClose();
     } catch (err: any) {
-      Alert.alert("Error", err.message || "Failed to save routine");
+      showAlert({
+        title: language === "tr" ? "Hata" : "Error",
+        message: err.message || "Failed to save routine",
+        type: "danger",
+      });
     }
   };
 

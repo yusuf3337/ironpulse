@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { View, Text, Pressable, ScrollView, Alert, TextInput } from "react-native";
+import { View, Text, Pressable, ScrollView, TextInput } from "react-native";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -7,6 +7,7 @@ import * as Haptics from "expo-haptics";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { useLanguage } from "@/context/LanguageContext";
+import { useAlert } from "@/context/AlertModalContext";
 import { useDatabase } from "@/db/useDatabase";
 
 interface ExerciseSet {
@@ -28,6 +29,7 @@ interface WorkoutExercise {
 export default function ActiveWorkoutScreen(): React.JSX.Element {
   const insets = useSafeAreaInsets();
   const { t, language } = useLanguage();
+  const { showAlert, showConfirm } = useAlert();
   const { workouts: workoutRepo, prs: prRepo, programs: programRepo } = useDatabase();
 
   const [sessionTitle, setSessionTitle] = useState<string>("Antrenman Seansı");
@@ -111,26 +113,23 @@ export default function ActiveWorkoutScreen(): React.JSX.Element {
   const currentExercise = exercises[activeExerciseIndex];
 
   const handleClose = () => {
-    Alert.alert(
-      t("activeSession"),
-      language === "tr"
-        ? "Mevcut antrenmandan çıkmak istediğinize emin misiniz?"
-        : "Are you sure you want to exit this workout session?",
-      [
-        { text: t("cancel"), style: "cancel" },
-        {
-          text: t("close"),
-          style: "destructive",
-          onPress: () => {
-            if (router.canGoBack()) {
-              router.back();
-            } else {
-              router.replace("/(tabs)/train");
-            }
-          },
-        },
-      ]
-    );
+    showConfirm({
+      title: t("activeSession"),
+      message:
+        language === "tr"
+          ? "Mevcut antrenmandan çıkmak istediğinize emin misiniz? Kaydedilmemiş setler kaybolabilir."
+          : "Are you sure you want to exit this workout session?",
+      type: "warning",
+      confirmText: language === "tr" ? "Çık" : "Exit",
+      cancelText: t("cancel"),
+      onConfirm: () => {
+        if (router.canGoBack()) {
+          router.back();
+        } else {
+          router.replace("/(tabs)/train");
+        }
+      },
+    });
   };
 
   const handleToggleSet = (setId: string) => {
@@ -253,20 +252,25 @@ export default function ActiveWorkoutScreen(): React.JSX.Element {
         );
       }
 
-      Alert.alert(t("finish"), t("workoutFinishedAlert"), [
-        {
-          text: "Tamam",
-          onPress: () => {
-            if (router.canGoBack()) {
-              router.back();
-            } else {
-              router.replace("/(tabs)/train");
-            }
-          },
+      showAlert({
+        title: t("finish"),
+        message: t("workoutFinishedAlert"),
+        type: "success",
+        confirmText: language === "tr" ? "Harika!" : "Awesome!",
+        onConfirm: () => {
+          if (router.canGoBack()) {
+            router.back();
+          } else {
+            router.replace("/(tabs)/train");
+          }
         },
-      ]);
+      });
     } catch (err: any) {
-      Alert.alert("Error", err.message || "Failed to save workout session");
+      showAlert({
+        title: "Hata",
+        message: err.message || "Failed to save workout session",
+        type: "danger",
+      });
     }
   };
 

@@ -8,12 +8,12 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
-  Alert,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { useLanguage } from "@/context/LanguageContext";
+import { useAlert } from "@/context/AlertModalContext";
 import { useDatabase } from "@/db/useDatabase";
 import { AthleteProfile } from "@/db/schema";
 
@@ -34,6 +34,7 @@ export function AthleteSetupModal({
 }: AthleteSetupModalProps): React.JSX.Element {
   const { profile: profileRepo } = useDatabase();
   const { language } = useLanguage();
+  const { showAlert } = useAlert();
 
   const [name, setName] = useState<string>("");
   const [height, setHeight] = useState<string>("");
@@ -72,22 +73,26 @@ export function AthleteSetupModal({
     const parsedAge = parseInt(age, 10);
 
     if (!parsedHeight || parsedHeight < 80 || parsedHeight > 260) {
-      Alert.alert(
-        language === "tr" ? "Geçersiz Boy" : "Invalid Height",
-        language === "tr"
-          ? "Lütfen geçerli bir boy giriniz (80 - 260 cm)."
-          : "Please enter a valid height (80 - 260 cm)."
-      );
+      showAlert({
+        title: language === "tr" ? "Geçersiz Boy" : "Invalid Height",
+        message:
+          language === "tr"
+            ? "Lütfen geçerli bir boy giriniz (80 - 260 cm)."
+            : "Please enter a valid height (80 - 260 cm).",
+        type: "warning",
+      });
       return;
     }
 
     if (!parsedWeight || parsedWeight < 25 || parsedWeight > 350) {
-      Alert.alert(
-        language === "tr" ? "Geçersiz Kilo" : "Invalid Weight",
-        language === "tr"
-          ? "Lütfen geçerli bir kilo giriniz (25 - 350 kg)."
-          : "Please enter a valid weight (25 - 350 kg)."
-      );
+      showAlert({
+        title: language === "tr" ? "Geçersiz Kilo" : "Invalid Weight",
+        message:
+          language === "tr"
+            ? "Lütfen geçerli bir kilo giriniz (25 - 350 kg)."
+            : "Please enter a valid weight (25 - 350 kg).",
+        type: "warning",
+      });
       return;
     }
 
@@ -105,10 +110,13 @@ export function AthleteSetupModal({
       onSaved();
       onClose();
     } catch (err: any) {
-      Alert.alert(
-        language === "tr" ? "Hata" : "Error",
-        err.message || "Profil kaydedilemedi."
-      );
+      showAlert({
+        title: language === "tr" ? "Hata" : "Error",
+        message:
+          err.message ||
+          (language === "tr" ? "Profil kaydedilemedi." : "Failed to save profile."),
+        type: "danger",
+      });
     }
   };
 

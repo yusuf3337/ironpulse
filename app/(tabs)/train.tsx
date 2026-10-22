@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { View, Text, Pressable, Alert } from "react-native";
+import { View, Text, Pressable } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
@@ -9,11 +9,13 @@ import { SectionHeader } from "@/components/ui/SectionHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { CustomizeDayModal } from "@/components/workout/CustomizeDayModal";
 import { useLanguage } from "@/context/LanguageContext";
+import { useAlert } from "@/context/AlertModalContext";
 import { useDatabase } from "@/db/useDatabase";
 import { DayRoutine } from "@/db/repositories/programRepo";
 
 export default function TrainScreen(): React.JSX.Element {
   const { t, language } = useLanguage();
+  const { showAlert, showConfirm } = useAlert();
   const { programs: programRepo } = useDatabase();
 
   const weekdays = [
@@ -48,32 +50,36 @@ export default function TrainScreen(): React.JSX.Element {
   );
 
   const handleApplyTemplate = async (templateKey: "upper_lower" | "ppl" | "full_body", name: string) => {
-    Alert.alert(
-      language === "tr" ? "Şablonu Uygula" : "Apply Template",
-      language === "tr"
-        ? `"${name}" şablonunu haftalık takviminize uygulamak istiyor musunuz? Mevcut günleriniz bu plana göre düzenlenecektir.`
-        : `Do you want to apply the "${name}" split to your weekly calendar?`,
-      [
-        { text: t("cancel"), style: "cancel" },
-        {
-          text: language === "tr" ? "Uygula" : "Apply",
-          onPress: async () => {
-            try {
-              await programRepo.applyTemplate(templateKey);
-              loadDayRoutine();
-              Alert.alert(
-                language === "tr" ? "Başarılı" : "Success",
-                language === "tr"
-                  ? `"${name}" başarıyla haftalık programınıza aktarıldı!`
-                  : `"${name}" has been applied to your training schedule!`
-              );
-            } catch (err: any) {
-              Alert.alert("Error", err.message || "Failed to apply template");
-            }
-          },
-        },
-      ]
-    );
+    showConfirm({
+      title: language === "tr" ? "Şablonu Uygula" : "Apply Template",
+      message:
+        language === "tr"
+          ? `"${name}" şablonunu haftalık takviminize uygulamak istiyor musunuz? Mevcut günleriniz bu plana göre düzenlenecektir.`
+          : `Do you want to apply the "${name}" split to your weekly calendar?`,
+      type: "warning",
+      confirmText: language === "tr" ? "Uygula" : "Apply",
+      cancelText: t("cancel"),
+      onConfirm: async () => {
+        try {
+          await programRepo.applyTemplate(templateKey);
+          loadDayRoutine();
+          showAlert({
+            title: language === "tr" ? "Başarılı" : "Success",
+            message:
+              language === "tr"
+                ? `"${name}" başarıyla haftalık programınıza aktarıldı!`
+                : `"${name}" has been applied to your training schedule!`,
+            type: "success",
+          });
+        } catch (err: any) {
+          showAlert({
+            title: "Hata",
+            message: err.message || "Failed to apply template",
+            type: "danger",
+          });
+        }
+      },
+    });
   };
 
   const isRest = currentRoutine?.isRest ?? false;

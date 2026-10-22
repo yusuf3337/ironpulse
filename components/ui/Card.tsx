@@ -18,7 +18,7 @@ export function Card({
 }: CardProps): React.JSX.Element {
   const variantStyles: Record<CardVariant, string> = {
     default: "bg-surface border border-surfaceBorder",
-    elevated: "bg-surfaceHover border border-surfaceBorder shadow-md",
+    elevated: "bg-surfaceHover border border-surfaceBorder",
     highlight: "bg-surface border border-primary/40",
     goldHighlight: "bg-surface border border-gold/40",
   };
