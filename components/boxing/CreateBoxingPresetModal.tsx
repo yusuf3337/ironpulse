@@ -8,12 +8,12 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
-  Alert,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { useLanguage } from "@/context/LanguageContext";
+import { useAlert } from "@/context/AlertModalContext";
 import { useDatabase } from "@/db/useDatabase";
 
 interface CreateBoxingPresetModalProps {
@@ -29,6 +29,7 @@ export function CreateBoxingPresetModal({
 }: CreateBoxingPresetModalProps): React.JSX.Element {
   const { boxing: boxingRepo } = useDatabase();
   const { language } = useLanguage();
+  const { showAlert } = useAlert();
 
   const [name, setName] = useState<string>("");
   const [rounds, setRounds] = useState<number>(6);
@@ -73,12 +74,14 @@ export function CreateBoxingPresetModal({
         : `${rounds} Rounds Custom Timer`);
 
     if (totalWorkSeconds <= 0) {
-      Alert.alert(
-        language === "tr" ? "Geçersiz Süre" : "Invalid Duration",
-        language === "tr"
-          ? "Çalışma / Dövüş süresi 0'dan büyük olmalıdır."
-          : "Work duration must be greater than 0."
-      );
+      showAlert({
+        title: language === "tr" ? "Geçersiz Süre" : "Invalid Duration",
+        message:
+          language === "tr"
+            ? "Çalışma / Dövüş süresi 0'dan büyük olmalıdır."
+            : "Work duration must be greater than 0.",
+        type: "warning",
+      });
       return;
     }
 
@@ -97,7 +100,11 @@ export function CreateBoxingPresetModal({
       onClose();
       setName("");
     } catch (err: any) {
-      Alert.alert("Error", err.message || "Failed to save preset");
+      showAlert({
+        title: language === "tr" ? "Hata" : "Error",
+        message: err.message || "Failed to save preset",
+        type: "danger",
+      });
     }
   };
 

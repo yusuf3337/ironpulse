@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { View, Text, Pressable, Alert, Modal, TextInput, KeyboardAvoidingView, Platform, ScrollView } from "react-native";
+import { View, Text, Pressable, Modal, TextInput, KeyboardAvoidingView, Platform, ScrollView } from "react-native";
 import { useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
@@ -10,10 +10,12 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { useDatabase } from "@/db/useDatabase";
 import { PersonalRecord } from "@/db/schema";
 import { useLanguage } from "@/context/LanguageContext";
+import { useAlert } from "@/context/AlertModalContext";
 
 export default function ArenaScreen(): React.JSX.Element {
   const { prs: prRepo } = useDatabase();
   const { t, language } = useLanguage();
+  const { showAlert } = useAlert();
   const [activeTab, setActiveTab] = useState<"records" | "achievements">("records");
   const [records, setRecords] = useState<PersonalRecord[]>([]);
   const [rankInfo, setRankInfo] = useState<{
@@ -57,18 +59,20 @@ export default function ArenaScreen(): React.JSX.Element {
     const repsNum = parseInt(prReps, 10);
 
     if (!weightNum || weightNum <= 0) {
-      Alert.alert(
-        language === "tr" ? "Geçersiz Ağırlık" : "Invalid Weight",
-        language === "tr" ? "Lütfen geçerli bir ağırlık girin." : "Please enter a valid weight."
-      );
+      showAlert({
+        title: language === "tr" ? "Geçersiz Ağırlık" : "Invalid Weight",
+        message: language === "tr" ? "Lütfen geçerli bir ağırlık girin." : "Please enter a valid weight.",
+        type: "warning",
+      });
       return;
     }
 
     if (!repsNum || repsNum <= 0) {
-      Alert.alert(
-        language === "tr" ? "Geçersiz Tekrar" : "Invalid Reps",
-        language === "tr" ? "Tekrar sayısı en az 1 olmalıdır." : "Reps must be at least 1."
-      );
+      showAlert({
+        title: language === "tr" ? "Geçersiz Tekrar" : "Invalid Reps",
+        message: language === "tr" ? "Tekrar sayısı en az 1 olmalıdır." : "Reps must be at least 1.",
+        type: "warning",
+      });
       return;
     }
 
@@ -86,7 +90,11 @@ export default function ArenaScreen(): React.JSX.Element {
       setPrNotes("");
       loadArenaData();
     } catch (err: any) {
-      Alert.alert("Error", err.message || "Failed to save PR");
+      showAlert({
+        title: "Hata",
+        message: err.message || "Failed to save PR",
+        type: "danger",
+      });
     }
   };
 

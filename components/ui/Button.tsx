@@ -44,9 +44,9 @@ export function Button({
   };
 
   const sizeStyles: Record<ButtonSize, string> = {
-    sm: "py-2 px-3 rounded-lg",
-    md: "py-3.5 px-4 rounded-xl",
-    lg: "py-4 px-6 rounded-2xl",
+    sm: "py-2 px-3 rounded-lg min-h-[38px]",
+    md: "py-3.5 px-4 rounded-xl min-h-[46px]",
+    lg: "py-4 px-6 rounded-2xl min-h-[54px]",
   };
 
   const textSizeStyles: Record<ButtonSize, string> = {
@@ -74,9 +74,12 @@ export function Button({
           color={variant === "primary" || variant === "gold" ? "#000000" : "#FFFFFF"}
         />
       ) : (
-        <View className="flex-row items-center justify-center">
-          {icon ? <View className="mr-2">{icon}</View> : null}
-          <Text className={`${currentTextSize} ${currentTextVariant} text-center ${textClassName}`}>
+        <View className="flex-row items-center justify-center shrink-0">
+          {icon ? <View className="mr-2.5 items-center justify-center">{icon}</View> : null}
+          <Text
+            className={`${currentTextSize} ${currentTextVariant} text-center ${textClassName}`}
+            numberOfLines={1}
+          >
             {title}
           </Text>
         </View>

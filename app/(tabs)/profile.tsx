@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { View, Text, Pressable, Alert } from "react-native";
+import { View, Text, Pressable } from "react-native";
 import { useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
@@ -12,10 +12,12 @@ import { AthleteSetupModal } from "@/components/profile/AthleteSetupModal";
 import { useDatabase } from "@/db/useDatabase";
 import { AthleteProfile, BodyMeasurement } from "@/db/schema";
 import { useLanguage } from "@/context/LanguageContext";
+import { useAlert } from "@/context/AlertModalContext";
 
 export default function ProfileScreen(): React.JSX.Element {
   const { profile: profileRepo, backup: backupRepo } = useDatabase();
   const { t, language, setLanguage } = useLanguage();
+  const { showAlert } = useAlert();
 
   const [athlete, setAthlete] = useState<AthleteProfile | null>(null);
   const [measurements, setMeasurements] = useState<BodyMeasurement[]>([]);
@@ -42,19 +44,25 @@ export default function ProfileScreen(): React.JSX.Element {
     try {
       const archive = await backupRepo.exportDatabase();
       const json = JSON.stringify(archive, null, 2);
-      Alert.alert(
-        language === "tr" ? "Çevrimdışı Yedek Hazır" : "Offline Backup Archive Ready",
-        language === "tr"
-          ? `Veritabanı başarıyla dışa aktarıldı!\n\nBoyut: ${(json.length / 1024).toFixed(1)} KB\nKayıtlar: ${
-              archive.data.personalRecords.length
-            } PR, ${archive.data.workoutSessions.length} Antrenman, ${archive.data.boxingSessions.length} Boks seansı.`
-          : `Database exported successfully!\n\nPayload Size: ${(json.length / 1024).toFixed(1)} KB\nRecords: ${
-              archive.data.personalRecords.length
-            } PRs, ${archive.data.workoutSessions.length} Workouts, ${archive.data.boxingSessions.length} Boxing sessions.`,
-        [{ text: "Tamam" }]
-      );
+      showAlert({
+        title: language === "tr" ? "Çevrimdışı Yedek Hazır" : "Offline Backup Ready",
+        message:
+          language === "tr"
+            ? `Veritabanı başarıyla dışa aktarıldı!\n\nBoyut: ${(json.length / 1024).toFixed(1)} KB\nKayıtlar: ${
+                archive.data.personalRecords.length
+              } PR, ${archive.data.workoutSessions.length} Antrenman, ${archive.data.boxingSessions.length} Boks seansı.`
+            : `Database exported successfully!\n\nPayload Size: ${(json.length / 1024).toFixed(1)} KB\nRecords: ${
+                archive.data.personalRecords.length
+              } PRs, ${archive.data.workoutSessions.length} Workouts, ${archive.data.boxingSessions.length} Boxing sessions.`,
+        type: "success",
+        confirmText: language === "tr" ? "Tamam" : "Done",
+      });
     } catch (err: any) {
-      Alert.alert("Export Error", err.message || "Failed to export database");
+      showAlert({
+        title: "Dışa Aktarma Hatası",
+        message: err.message || "Failed to export database",
+        type: "danger",
+      });
     }
   };
 
@@ -296,12 +304,15 @@ export default function ProfileScreen(): React.JSX.Element {
             title={t("restoreBackup")}
             variant="secondary"
             onPress={() => {
-              Alert.alert(
-                t("restoreBackup"),
-                language === "tr"
-                  ? "Geçerli bir IRONPULSE JSON yedeği seçerek kayıtlarınızı güvenle geri yükleyebilirsiniz."
-                  : "Select a valid IRONPULSE JSON backup archive to merge records safely."
-              );
+              showAlert({
+                title: t("restoreBackup"),
+                message:
+                  language === "tr"
+                    ? "Geçerli bir IRONPULSE JSON yedeği seçerek kayıtlarınızı güvenle geri yükleyebilirsiniz."
+                    : "Select a valid IRONPULSE JSON backup archive to merge records safely.",
+                type: "info",
+                confirmText: language === "tr" ? "Anladım" : "Understood",
+              });
             }}
             className="flex-1"
             icon={<Ionicons name="refresh-outline" size={16} color="#9E9EA8" />}

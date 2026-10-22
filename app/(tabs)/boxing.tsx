@@ -1,20 +1,22 @@
-import React, { useState, useCallback } from "react";
-import { View, Text, Pressable, Alert } from "react-native";
-import { router, useFocusEffect } from "expo-router";
+import React, { useState, useEffect, useCallback } from "react";
+import { View, Text, Pressable } from "react-native";
+import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
-import { Card } from "@/components/ui/Card";
-import { Button } from "@/components/ui/Button";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { useLanguage } from "@/context/LanguageContext";
+import { useAlert } from "@/context/AlertModalContext";
 import { useDatabase } from "@/db/useDatabase";
 import { BoxingPreset } from "@/db/schema";
 import { CreateBoxingPresetModal } from "@/components/boxing/CreateBoxingPresetModal";
 
 export default function BoxingScreen(): React.JSX.Element {
   const { t, language } = useLanguage();
+  const { showAlert, showConfirm } = useAlert();
   const { boxing: boxingRepo } = useDatabase();
-  const [activeTab, setActiveTab] = useState<"timer" | "techniques" | "combos">("timer");
+
+  const [activeTab, setActiveTab] = useState<"timer" | "combos" | "techniques">("timer");
   const [presets, setPresets] = useState<BoxingPreset[]>([]);
   const [selectedPresetId, setSelectedPresetId] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState<boolean>(false);
@@ -32,7 +34,6 @@ export default function BoxingScreen(): React.JSX.Element {
         setPresets(dbPresets);
         setSelectedPresetId((prev) => prev ?? dbPresets[0].id);
       } else {
-        // Fallback default presets if table empty
         const defaults: BoxingPreset[] = [
           {
             id: "b-pre-1",
@@ -46,7 +47,7 @@ export default function BoxingScreen(): React.JSX.Element {
           },
           {
             id: "b-pre-2",
-            name: language === "tr" ? "Standart Boks / Sparring" : "Standard Sparring",
+            name: language === "tr" ? "Standart Sparring" : "Standard Sparring",
             rounds: 6,
             workSeconds: 180,
             restSeconds: 60,
@@ -83,15 +84,14 @@ export default function BoxingScreen(): React.JSX.Element {
     }
   }, [boxingRepo, language]);
 
-  useFocusEffect(
-    useCallback(() => {
-      loadPresets();
-    }, [loadPresets])
-  );
+  useEffect(() => {
+    loadPresets();
+  }, [loadPresets]);
 
   const activePreset = presets.find((p) => p.id === selectedPresetId) || presets[0];
 
   const handleLaunchTimer = (preset: BoxingPreset) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     router.push({
       pathname: "/boxing/timer",
       params: {
@@ -105,194 +105,331 @@ export default function BoxingScreen(): React.JSX.Element {
   };
 
   const handleDeletePreset = (preset: BoxingPreset) => {
-    Alert.alert(
-      language === "tr" ? "Sayacı Sil" : "Delete Preset",
-      language === "tr"
-        ? `"${preset.name}" sayacını silmek istediğinizden emin misiniz?`
-        : `Are you sure you want to delete "${preset.name}"?`,
-      [
-        { text: t("cancel"), style: "cancel" },
-        {
-          text: language === "tr" ? "Sil" : "Delete",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              await boxingRepo.deletePreset(preset.id);
-              await loadPresets();
-            } catch (err: any) {
-              Alert.alert("Error", err.message || "Failed to delete preset");
-            }
-          },
-        },
-      ]
-    );
+    showConfirm({
+      title: language === "tr" ? "Sayacı Sil" : "Delete Preset",
+      message:
+        language === "tr"
+          ? `"${preset.name}" sayacını silmek istediğinizden emin misiniz?`
+          : `Are you sure you want to delete "${preset.name}"?`,
+      type: "danger",
+      confirmText: language === "tr" ? "Sil" : "Delete",
+      cancelText: t("cancel"),
+      onConfirm: async () => {
+        try {
+          await boxingRepo.deletePreset(preset.id);
+          await loadPresets();
+        } catch (err: any) {
+          showAlert({
+            title: "Hata",
+            message: err.message || "Failed to delete preset",
+            type: "danger",
+          });
+        }
+      },
+    });
   };
 
   return (
     <ScreenContainer scrollable>
-      {/* Header */}
+      {/* Top Header with Jabb-inspired energy badge */}
       <View className="mb-4 pt-1">
-        <Text className="text-[11px] font-bold uppercase tracking-widest text-primary">
-          {t("boxingSubtitle")}
+        <View className="flex-row items-center gap-2 self-start rounded-full bg-crimson/15 border border-crimson/30 px-3 py-1 mb-2">
+          <View className="h-2 w-2 rounded-full bg-crimson" />
+          <Text className="text-[10px] font-black uppercase tracking-widest text-crimson">
+            {language === "tr" ? "BOKS AKADEMİSİ • DÖVÜŞ ZİLLERİ" : "FIGHT CAMP • BOXING ROUNDS"}
+          </Text>
+        </View>
+
+        <Text className="text-3xl sm:text-4xl font-black tracking-tight text-textPrimary">
+          {language === "tr" ? "Bir Boksör Gibi Dövüş" : "Train Like a Fighter"}
         </Text>
-        <Text className="text-3xl font-black tracking-tight text-textPrimary">
-          {t("boxingTitle")}
+        <Text className="text-xs sm:text-sm font-medium text-textSecondary mt-1 leading-relaxed">
+          {language === "tr"
+            ? "Otantik raunt zilleri, dinlenme aralıkları ve dövüş kombinasyonları."
+            : "Authentic ring bells, rest horns, and coach-curated combinations."}
         </Text>
       </View>
 
-      {/* Mode Segment Bar */}
-      <View className="flex-row rounded-xl bg-surface border border-surfaceBorder p-1 mb-5">
+      {/* Jabb-Style Segmented Pill Bar */}
+      <View className="flex-row rounded-full bg-[#15151A] border border-surfaceBorder p-1 mb-5">
         <Pressable
-          onPress={() => setActiveTab("timer")}
-          className={`flex-1 py-2 items-center justify-center rounded-lg ${
-            activeTab === "timer" ? "bg-primary" : "bg-transparent"
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            setActiveTab("timer");
+          }}
+          className={`flex-1 py-2.5 items-center justify-center rounded-full flex-row gap-1.5 ${
+            activeTab === "timer" ? "bg-crimson" : "bg-transparent"
           }`}
         >
+          <Ionicons
+            name="timer"
+            size={14}
+            color={activeTab === "timer" ? "#FFFFFF" : "#9E9EA8"}
+          />
           <Text
-            className={`text-xs font-bold uppercase tracking-wider ${
-              activeTab === "timer" ? "text-black" : "text-textSecondary"
+            className={`text-xs font-black uppercase tracking-wider ${
+              activeTab === "timer" ? "text-white" : "text-textSecondary"
             }`}
           >
-            {t("roundTimerTab")}
+            {language === "tr" ? "Sayaçlar" : "Timers"}
           </Text>
         </Pressable>
+
         <Pressable
-          onPress={() => setActiveTab("techniques")}
-          className={`flex-1 py-2 items-center justify-center rounded-lg ${
-            activeTab === "techniques" ? "bg-primary" : "bg-transparent"
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            setActiveTab("combos");
+          }}
+          className={`flex-1 py-2.5 items-center justify-center rounded-full flex-row gap-1.5 ${
+            activeTab === "combos" ? "bg-crimson" : "bg-transparent"
           }`}
         >
+          <Ionicons
+            name="flame"
+            size={14}
+            color={activeTab === "combos" ? "#FFFFFF" : "#9E9EA8"}
+          />
           <Text
-            className={`text-xs font-bold uppercase tracking-wider ${
-              activeTab === "techniques" ? "text-black" : "text-textSecondary"
+            className={`text-xs font-black uppercase tracking-wider ${
+              activeTab === "combos" ? "text-white" : "text-textSecondary"
             }`}
           >
-            {t("techniquesTab")}
+            {language === "tr" ? "Kombolar" : "Combos"}
           </Text>
         </Pressable>
+
         <Pressable
-          onPress={() => setActiveTab("combos")}
-          className={`flex-1 py-2 items-center justify-center rounded-lg ${
-            activeTab === "combos" ? "bg-primary" : "bg-transparent"
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            setActiveTab("techniques");
+          }}
+          className={`flex-1 py-2.5 items-center justify-center rounded-full flex-row gap-1.5 ${
+            activeTab === "techniques" ? "bg-crimson" : "bg-transparent"
           }`}
         >
+          <Ionicons
+            name="flash"
+            size={14}
+            color={activeTab === "techniques" ? "#FFFFFF" : "#9E9EA8"}
+          />
           <Text
-            className={`text-xs font-bold uppercase tracking-wider ${
-              activeTab === "combos" ? "text-black" : "text-textSecondary"
+            className={`text-xs font-black uppercase tracking-wider ${
+              activeTab === "techniques" ? "text-white" : "text-textSecondary"
             }`}
           >
-            {t("combosTab")}
+            {language === "tr" ? "Vuruşlar" : "Arsenal"}
           </Text>
         </Pressable>
       </View>
 
+      {/* TAB 1: SAYAÇLAR (Timers) */}
       {activeTab === "timer" && (
         <View>
-          {/* Quick Active Preset Banner */}
+          {/* Featured Active Preset Card (Jabb Hero Style) */}
           {activePreset && (
-            <Card variant="highlight" className="p-5 mb-5">
-              <View className="flex-row items-center justify-between mb-2">
-                <Text className="text-xs font-black uppercase tracking-wider text-primary">
-                  {t("readyToBox")}
-                </Text>
-                <View className="rounded-full bg-primary/20 px-2.5 py-0.5">
-                  <Text className="text-[10px] font-extrabold text-primary uppercase">
+            <View className="mb-6 rounded-[28px] overflow-hidden border border-crimson/40 bg-[#141419] p-5">
+              <View className="flex-row items-center justify-between mb-3">
+                <View className="flex-row items-center gap-1.5">
+                  <View className="h-2 w-2 rounded-full bg-crimson" />
+                  <Text className="text-[10px] font-black uppercase tracking-widest text-crimson">
+                    {language === "tr" ? "HAZIR RAUNT SAYACI" : "CURRENT RING SETUP"}
+                  </Text>
+                </View>
+                <View className="rounded-full bg-crimson/20 border border-crimson/30 px-2.5 py-0.5">
+                  <Text className="text-[10px] font-black text-white uppercase">
                     {activePreset.rounds} {t("roundsUnit")} × {formatTime(activePreset.workSeconds)}
                   </Text>
                 </View>
               </View>
 
-              <Text className="text-2xl font-black text-textPrimary mb-1">
+              <Text className="text-2xl sm:text-3xl font-black text-textPrimary tracking-tight mb-1">
                 {activePreset.name}
               </Text>
-              <Text className="text-xs text-textSecondary mb-4">
-                {language === "tr"
-                  ? `Dövüş: ${formatTime(activePreset.workSeconds)} • Dinlenme: ${formatTime(activePreset.restSeconds)} • Hazırlık: ${activePreset.prepSeconds}s`
-                  : `Work: ${formatTime(activePreset.workSeconds)} • Rest: ${formatTime(activePreset.restSeconds)} • Prep: ${activePreset.prepSeconds}s`}
-              </Text>
 
-              <Button
-                title={t("launchTimer")}
+              {/* Time Breakdown Chips */}
+              <View className="flex-row flex-wrap items-center gap-2 my-3">
+                <View className="flex-row items-center gap-1 bg-[#1E1E24] border border-[#2B2B34] rounded-xl px-2.5 py-1.5">
+                  <Ionicons name="flame" size={13} color="#D81E3C" />
+                  <Text className="text-xs font-bold text-textPrimary">
+                    {formatTime(activePreset.workSeconds)}{" "}
+                    <Text className="text-textSecondary font-normal">
+                      {language === "tr" ? "Dövüş" : "Work"}
+                    </Text>
+                  </Text>
+                </View>
+
+                <View className="flex-row items-center gap-1 bg-[#1E1E24] border border-[#2B2B34] rounded-xl px-2.5 py-1.5">
+                  <Ionicons name="water" size={13} color="#38BDF8" />
+                  <Text className="text-xs font-bold text-textPrimary">
+                    {activePreset.restSeconds}s{" "}
+                    <Text className="text-textSecondary font-normal">
+                      {language === "tr" ? "Dinlenme" : "Rest"}
+                    </Text>
+                  </Text>
+                </View>
+
+                <View className="flex-row items-center gap-1 bg-[#1E1E24] border border-[#2B2B34] rounded-xl px-2.5 py-1.5">
+                  <Ionicons name="notifications" size={13} color="#CCFF00" />
+                  <Text className="text-xs font-bold text-textPrimary">
+                    {activePreset.prepSeconds}s{" "}
+                    <Text className="text-textSecondary font-normal">
+                      {language === "tr" ? "Hazırlık" : "Prep"}
+                    </Text>
+                  </Text>
+                </View>
+              </View>
+
+              {/* Huge Jabb-style Action Button */}
+              <Pressable
                 onPress={() => handleLaunchTimer(activePreset)}
-                size="lg"
-                icon={<Ionicons name="play" size={20} color="#000" />}
-              />
-            </Card>
+                className="mt-2 h-14 rounded-2xl bg-crimson active:bg-crimsonDark flex-row items-center justify-center gap-2"
+              >
+                <Ionicons name="play" size={20} color="#FFFFFF" />
+                <Text className="text-base font-black tracking-wide text-white uppercase">
+                  {language === "tr" ? "SAYACI BAŞLAT" : "START ROUNDS"}
+                </Text>
+              </Pressable>
+            </View>
           )}
 
-          {/* Presets List */}
+          {/* Preset List Header */}
           <SectionHeader
-            title={t("savedPresets")}
-            subtitle={t("presetsSub")}
-            actionLabel={t("customPreset")}
+            title={language === "tr" ? "Raunt Listesi" : "Round Presets"}
+            subtitle={
+              language === "tr"
+                ? "Antrenman tipinize uygun raunt planını seçin"
+                : "Select interval format for bag, pads or sparring"
+            }
+            actionLabel={language === "tr" ? "+ Özel Sayaç" : "+ Custom"}
             onAction={() => setShowCreateModal(true)}
           />
-          <View className="gap-2.5 mb-5">
+
+          {/* Jabb-Style Presets with Round Badges (RN) */}
+          <View className="gap-3 mb-6">
             {presets.map((preset) => {
               const isSelected = preset.id === activePreset?.id;
-              const isCustom = !preset.id.startsWith("b-pre-") || preset.id.startsWith("b-pre-17"); // generated timestamp or custom
+              const isCustom =
+                !preset.id.startsWith("b-pre-") || preset.id.startsWith("b-pre-17");
+
               return (
                 <Pressable
                   key={preset.id}
-                  onPress={() => setSelectedPresetId(preset.id)}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    setSelectedPresetId(preset.id);
+                  }}
+                  className={`rounded-3xl p-4 flex-row items-center justify-between border transition-all ${
+                    isSelected
+                      ? "bg-[#181820] border-crimson/50"
+                      : "bg-[#131317] border-surfaceBorder/80 active:bg-surfaceHover"
+                  }`}
                 >
-                  <Card
-                    className={`p-3.5 flex-row items-center justify-between ${
-                      isSelected ? "border-primary/60 bg-surfaceHover" : ""
-                    }`}
-                  >
-                    <View className="flex-1 mr-2">
-                      <View className="flex-row items-center">
-                        <Text className="text-sm font-bold text-textPrimary">
-                          {preset.name}
-                        </Text>
-                        {isSelected && (
-                          <View className="ml-2 rounded-full bg-primary/20 px-2 py-0.5">
-                            <Text className="text-[9px] font-black uppercase text-primary">
-                              {language === "tr" ? "Seçili" : "Selected"}
-                            </Text>
-                          </View>
-                        )}
-                      </View>
-                      <Text className="text-xs text-textSecondary mt-0.5">
-                        {preset.rounds} {t("roundsUnit")} • {formatTime(preset.workSeconds)} {language === "tr" ? "dövüş" : "work"} • {preset.restSeconds}s {language === "tr" ? "dinlenme" : "rest"} • {preset.prepSeconds}s {language === "tr" ? "hazırlık" : "prep"}
+                  <View className="flex-row items-center flex-1 mr-3">
+                    {/* Jabb Round Square Badge (RN) */}
+                    <View
+                      className={`h-12 w-12 rounded-2xl items-center justify-center mr-3.5 border ${
+                        isSelected
+                          ? "bg-crimson/20 border-crimson/40"
+                          : "bg-surfaceHover border-surfaceBorder"
+                      }`}
+                    >
+                      <Text
+                        className={`text-sm font-black tracking-tight ${
+                          isSelected ? "text-crimson" : "text-textSecondary"
+                        }`}
+                      >
+                        {preset.rounds}R
                       </Text>
                     </View>
 
-                    <View className="flex-row items-center gap-1.5">
-                      {isCustom && (
-                        <Pressable
-                          onPress={() => handleDeletePreset(preset)}
-                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                          className="h-9 w-9 items-center justify-center rounded-lg bg-surface border border-surfaceBorder active:opacity-70"
+                    <View className="flex-1">
+                      <View className="flex-row items-center gap-1.5">
+                        <Text
+                          className={`text-sm font-black ${
+                            isSelected ? "text-white" : "text-textPrimary"
+                          }`}
+                          numberOfLines={1}
                         >
-                          <Ionicons name="trash-outline" size={16} color="#FF453A" />
-                        </Pressable>
-                      )}
-                      <Button
-                        title={t("start")}
-                        size="sm"
-                        variant={isSelected ? "primary" : "secondary"}
-                        onPress={() => handleLaunchTimer(preset)}
-                      />
+                          {preset.name}
+                        </Text>
+                      </View>
+                      <Text className="text-xs text-textSecondary mt-0.5">
+                        {formatTime(preset.workSeconds)} {language === "tr" ? "dövüş" : "work"} •{" "}
+                        {preset.restSeconds}s {language === "tr" ? "dinlenme" : "rest"}
+                      </Text>
                     </View>
-                  </Card>
+                  </View>
+
+                  <View className="flex-row items-center gap-2">
+                    {isCustom && (
+                      <Pressable
+                        onPress={() => handleDeletePreset(preset)}
+                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                        className="h-10 w-10 items-center justify-center rounded-xl bg-surface border border-surfaceBorder active:opacity-70"
+                      >
+                        <Ionicons name="trash-outline" size={16} color="#FF453A" />
+                      </Pressable>
+                    )}
+
+                    <Pressable
+                      onPress={() => handleLaunchTimer(preset)}
+                      className={`h-10 px-4 rounded-xl items-center justify-center flex-row gap-1 ${
+                        isSelected
+                          ? "bg-crimson active:bg-crimsonDark"
+                          : "bg-surfaceHover active:bg-surfaceBorder border border-surfaceBorder"
+                      }`}
+                    >
+                      <Ionicons
+                        name="play"
+                        size={14}
+                        color={isSelected ? "#FFFFFF" : "#F4F4F6"}
+                      />
+                      <Text
+                        className={`text-xs font-black uppercase ${
+                          isSelected ? "text-white" : "text-textPrimary"
+                        }`}
+                      >
+                        {language === "tr" ? "BAŞLAT" : "START"}
+                      </Text>
+                    </Pressable>
+                  </View>
                 </Pressable>
               );
             })}
 
-            {/* Quick Button to Create New Timer */}
-            <Button
-              title={language === "tr" ? "+ YENİ ÖZEL SAYAÇ OLUŞTUR" : "+ CREATE CUSTOM TIMER"}
-              variant="secondary"
-              size="md"
-              onPress={() => setShowCreateModal(true)}
-              className="mt-1"
-              icon={<Ionicons name="add" size={18} color="#CCFF00" />}
-            />
+            {/* Create Custom Timer Button */}
+            <Pressable
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setShowCreateModal(true);
+              }}
+              className="mt-1 h-13 rounded-2xl border border-dashed border-surfaceBorder/90 bg-[#121216] active:bg-[#1A1A22] items-center justify-center flex-row gap-2"
+            >
+              <Ionicons name="add-circle-outline" size={18} color="#D81E3C" />
+              <Text className="text-xs font-black uppercase tracking-wider text-textPrimary">
+                {language === "tr" ? "YENİ ÖZEL SAYAÇ OLUŞTUR" : "CREATE CUSTOM TIMER"}
+              </Text>
+            </Pressable>
           </View>
 
-          {/* Modal for Creating Custom Boxing Preset */}
+          {/* Coach's Corner Tip Card (Jabb-Style Advice) */}
+          <View className="rounded-[24px] border border-surfaceBorder bg-[#141418] p-4 mb-6">
+            <View className="flex-row items-center gap-2 mb-2">
+              <View className="h-6 w-6 rounded-lg bg-primary/20 items-center justify-center">
+                <Ionicons name="bulb" size={14} color="#CCFF00" />
+              </View>
+              <Text className="text-[11px] font-black uppercase tracking-wider text-primary">
+                {language === "tr" ? "KOÇUN KÖŞESİ" : "COACH'S CORNER"}
+              </Text>
+            </View>
+            <Text className="text-xs font-medium text-textSecondary leading-relaxed italic">
+              {language === "tr"
+                ? "“Yumruk attıktan sonra elini asla aşağıda bırakma; fırlattığın çizgiden çenene geri çek. Ayak parmak uçlarında esnek kal.”"
+                : "“Never drop your hands after throwing; snap it right back to your guard. Stay light on the balls of your feet.”"}
+            </Text>
+          </View>
+
+          {/* Create Modal */}
           <CreateBoxingPresetModal
             visible={showCreateModal}
             onClose={() => setShowCreateModal(false)}
@@ -301,107 +438,253 @@ export default function BoxingScreen(): React.JSX.Element {
         </View>
       )}
 
-      {activeTab === "techniques" && (
-        <View className="gap-3.5">
+      {/* TAB 2: KOMBİNASYONLAR (Combos) */}
+      {activeTab === "combos" && (
+        <View className="gap-3.5 mb-6">
           <SectionHeader
-            title={t("punchArsenal")}
-            subtitle={t("punchSub")}
+            title={language === "tr" ? "Dövüş Kombinasyonları" : "Fight Combinations"}
+            subtitle={
+              language === "tr"
+                ? "Gölge boksu ve torba için hazır koç serileri"
+                : "Curated punch strings for bag and pad work"
+            }
           />
-          {[
-            {
-              name: "Direkt Sol / Jab (#1)",
-              type: language === "tr" ? "Ön El" : "Lead Hand",
-              cue: language === "tr" ? "Omuzu çeneye yapıştır, yumruğu hızla fırlatıp geri çek, avuç içi yere baksın." : "Snap straight, rotate palm down, chin tucked",
-            },
-            {
-              name: "Sağ Direkt / Cross (#2)",
-              type: language === "tr" ? "Arka Güç Eli" : "Rear Hand",
-              cue: language === "tr" ? "Arka ayağın parmak ucunda kalçayı döndür, tam uzanış ile ağırlığı aktar." : "Drive off rear foot, rotate hips, full extension",
-            },
-            {
-              name: "Sol Kroşe / Lead Hook (#3)",
-              type: language === "tr" ? "Ön El" : "Lead Hand",
-              cue: language === "tr" ? "Ön ayağı 90° döndür, dirsek yumruk hizasında yatay bir yay çizsin." : "Pivot front foot 90°, elbow level with fist",
-            },
-            {
-              name: "Sağ Aparkat / Uppercut (#6)",
-              type: language === "tr" ? "Güç Eli" : "Power Hand",
-              cue: language === "tr" ? "Dizleri hafif kırıp yukarıya doğru patlayıcı kuvvet üret, rakip gardının arasından vur." : "Drop hips, drive upwards through opponent's guard",
-            },
-          ].map((item) => (
-            <Card key={item.name} className="p-3.5">
-              <View className="flex-row justify-between items-center mb-1">
-                <Text className="text-sm font-bold text-textPrimary">{item.name}</Text>
-                <Text className="text-[10px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded">
-                  {item.type}
-                </Text>
-              </View>
-              <Text className="text-xs text-textSecondary leading-relaxed">{item.cue}</Text>
-            </Card>
-          ))}
 
-          <SectionHeader
-            title={t("defenseSystem")}
-            subtitle={t("defenseSub")}
-          />
           {[
             {
-              name: language === "tr" ? "Eskiş (Slip - İç & Dış)" : "Slip (Inside & Outside)",
-              desc: language === "tr" ? "Bel ve dizlerden hafif bükülerek yumruk çizgisinin dışına çıkın." : "Bend at waist and knees off the center line",
+              name: language === "tr" ? "Klasik 1 - 2 Kombosu" : "Classic 1 - 2 String",
+              level: language === "tr" ? "BAŞLANGIÇ" : "FOUNDATION",
+              desc:
+                language === "tr"
+                  ? "Mesafe ayarlama ve ani arka el patlaması. Boks dünyasının en etkili temelidir."
+                  : "Fundamental range finder and straight power cross finish.",
+              steps: [
+                { num: "1", name: "JAB", type: "lead" },
+                { num: "2", name: "CROSS", type: "rear" },
+              ],
             },
             {
-              name: language === "tr" ? "Roll / Bob & Weave (Kroşe Altından Kaçış)" : "Roll / Bob & Weave",
-              desc: language === "tr" ? "U harfi çizerek kroşenin altından kayıp ters taraftan pozisyon alın." : "Underhand duck forming a U-shape under hooks",
+              name: language === "tr" ? "Kroşe Kapanı (1 - 2 - 3)" : "Lead Hook Trap (1 - 2 - 3)",
+              level: language === "tr" ? "ORTA SEVİYE" : "INTERMEDIATE",
+              desc:
+                language === "tr"
+                  ? "Rakibin gardını öne çekip yan taraftan çeneye sol kroşeyi indirir."
+                  : "Occupies the front guard and wraps a clean lead hook around the temple.",
+              steps: [
+                { num: "1", name: "JAB", type: "lead" },
+                { num: "2", name: "CROSS", type: "rear" },
+                { num: "3", name: "HOOK", type: "lead" },
+              ],
             },
             {
-              name: language === "tr" ? "Yüksek Gard Blok (High Guard)" : "High Guard Block",
-              desc: language === "tr" ? "Eldivenler şakaklara yapışık, dirsekler gövdeyi ve çeneyi kalkan gibi örter." : "Gloves glued to temples, absorb force through elbows",
+              name: language === "tr" ? "Gövde - Kafa Yıkımı" : "Body-Head Destruction",
+              level: language === "tr" ? "İLERİ SEVİYE" : "ADVANCED",
+              desc:
+                language === "tr"
+                  ? "Eskiş ile seviye değiştirerek karaciğere aparkat ve ardından kafa kroşesi."
+                  : "Slip off center, blast the liver with rear uppercut, return upstairs with lead hook.",
+              steps: [
+                { num: "1", name: "JAB", type: "lead" },
+                { num: "SLIP", name: "ESKİŞ", type: "def" },
+                { num: "6", name: "APARKAT", type: "rear" },
+                { num: "3", name: "KROŞE", type: "lead" },
+              ],
             },
-          ].map((def) => (
-            <Card key={def.name} className="p-3.5">
-              <Text className="text-sm font-bold text-textPrimary">{def.name}</Text>
-              <Text className="text-xs text-textSecondary mt-0.5 leading-relaxed">{def.desc}</Text>
-            </Card>
+            {
+              name: language === "tr" ? "Geri Adım & Sayaç (Check Hook)" : "Check Hook & Pivot",
+              level: language === "tr" ? "TAKTIK" : "TACTICAL",
+              desc:
+                language === "tr"
+                  ? "Üzerinize gelen saldırgana karşı ön ayağı 90° çevirip sola çıkarak sol kroşe."
+                  : "Pivot 90° off the front foot to escape aggression while landing a lead hook.",
+              steps: [
+                { num: "1", name: "JAB", type: "lead" },
+                { num: "PIVOT", name: "DÖNÜŞ", type: "def" },
+                { num: "3", name: "CHECK HOOK", type: "lead" },
+                { num: "2", name: "CROSS", type: "rear" },
+              ],
+            },
+          ].map((combo, idx) => (
+            <View
+              key={idx}
+              className="rounded-3xl border border-surfaceBorder bg-[#141419] p-4"
+            >
+              <View className="flex-row items-center justify-between mb-2">
+                <Text className="text-base font-black text-textPrimary">
+                  {combo.name}
+                </Text>
+                <View className="rounded-full bg-crimson/15 border border-crimson/30 px-2 py-0.5">
+                  <Text className="text-[9px] font-black uppercase text-crimson">
+                    {combo.level}
+                  </Text>
+                </View>
+              </View>
+
+              <Text className="text-xs text-textSecondary leading-relaxed mb-3">
+                {combo.desc}
+              </Text>
+
+              {/* Sequence Badges */}
+              <View className="flex-row flex-wrap items-center gap-2">
+                {combo.steps.map((st, sIdx) => {
+                  const isLead = st.type === "lead";
+                  const isRear = st.type === "rear";
+
+                  const badgeBg = isLead
+                    ? "bg-sky-500/15 border-sky-500/30 text-sky-400"
+                    : isRear
+                    ? "bg-crimson/15 border-crimson/30 text-crimson"
+                    : "bg-amber-500/15 border-amber-500/30 text-amber-400";
+
+                  return (
+                    <View key={sIdx} className="flex-row items-center gap-1.5">
+                      <View
+                        className={`rounded-xl border px-3 py-1.5 flex-row items-center gap-1.5 ${badgeBg}`}
+                      >
+                        <Text className="text-xs font-black font-mono">{st.num}</Text>
+                        <Text className="text-[11px] font-extrabold uppercase">{st.name}</Text>
+                      </View>
+                      {sIdx < combo.steps.length - 1 && (
+                        <Ionicons name="chevron-forward" size={12} color="#6B6B78" />
+                      )}
+                    </View>
+                  );
+                })}
+              </View>
+            </View>
           ))}
         </View>
       )}
 
-      {activeTab === "combos" && (
-        <View className="gap-2.5">
+      {/* TAB 3: VURUŞLAR & TEKNİK (Arsenal) */}
+      {activeTab === "techniques" && (
+        <View className="gap-3.5 mb-6">
           <SectionHeader
-            title={t("savedCombos")}
-            subtitle={t("combosSub")}
-            actionLabel={t("buildCombo")}
-            onAction={() => {}}
+            title={language === "tr" ? "Temel Yumruk Numaraları" : "Punch Numbers (#1 - #6)"}
+            subtitle={
+              language === "tr"
+                ? "Evrensel boks numaralandırma sistemi"
+                : "Universal fight numbering standard"
+            }
           />
+
           {[
             {
-              name: language === "tr" ? "Klasik 1-2 Kombinasyonu" : "The Classic 1-2",
-              seq: ["1 - Jab", "2 - Cross"],
-              desc: language === "tr" ? "Mesafe ayarlama ve ani arka el gücü." : "Fundamental range finder and power finish",
+              num: "#1",
+              name: "Sol Direkt / Jab",
+              hand: language === "tr" ? "Ön El" : "Lead Hand",
+              cue:
+                language === "tr"
+                  ? "Omuzu çeneye yapıştır, yumruğu hızla fırlatıp geri çek. Avuç içi yere baksın."
+                  : "Snap straight out, rotate palm down, chin tucked against shoulder.",
             },
             {
-              name: language === "tr" ? "Sol Kroşe Tuzağı (1-2-3)" : "Power Hook Trap",
-              seq: ["1 - Jab", "2 - Cross", "3 - Lead Hook"],
-              desc: language === "tr" ? "Rakibin gardını öne çekip yan taraftan vuruş." : "Forces high guard and wraps around right side",
+              num: "#2",
+              name: "Sağ Direkt / Cross",
+              hand: language === "tr" ? "Arka Güç Eli" : "Rear Hand",
+              cue:
+                language === "tr"
+                  ? "Arka ayağın parmak ucunda kalçayı çevir, tüm vücut ağırlığını yumruğa aktar."
+                  : "Drive off back foot, rotate hip, full extension for maximum stopping power.",
             },
             {
-              name: language === "tr" ? "Gövde - Kafa Yıkımı" : "Body-Head Destruction",
-              seq: ["1 - Jab", "Slip", "6 - Gövde Aparkat", "3 - Kafa Kroşe"],
-              desc: language === "tr" ? "Seviye değiştirerek savunmayı çözme kombosu." : "Levels changes to open tight defenses",
+              num: "#3",
+              name: "Sol Kroşe / Lead Hook",
+              hand: language === "tr" ? "Ön El" : "Lead Hand",
+              cue:
+                language === "tr"
+                  ? "Ön ayağı 90° pivot yap, dirsek yumrukla aynı yatay eksende olsun."
+                  : "Pivot lead foot 90°, elbow horizontal with fist, rotate the core.",
             },
-          ].map((combo) => (
-            <Card key={combo.name} className="p-3.5">
-              <Text className="text-sm font-bold text-textPrimary mb-2">{combo.name}</Text>
-              <View className="flex-row flex-wrap gap-1.5 mb-2">
-                {combo.seq.map((step, idx) => (
-                  <View key={idx} className="bg-surfaceHover border border-surfaceBorder px-2.5 py-1 rounded-md">
-                    <Text className="text-[11px] font-mono font-bold text-primary">{step}</Text>
-                  </View>
-                ))}
+            {
+              num: "#4",
+              name: "Sağ Kroşe / Rear Hook",
+              hand: language === "tr" ? "Arka El" : "Rear Hand",
+              cue:
+                language === "tr"
+                  ? "Arka ayağı çevirerek geniş ve sert bir yayla rakibin sol şakağına vur."
+                  : "Powerful rear-side arc wrapping around the opponent's guard.",
+            },
+            {
+              num: "#5",
+              name: "Sol Aparkat / Lead Uppercut",
+              hand: language === "tr" ? "Ön El" : "Lead Hand",
+              cue:
+                language === "tr"
+                  ? "Dizleri hafif kırıp yukarıya doğru patlayıcı kuvvet üret, rakip gardının arasından vur."
+                  : "Dip front shoulder slightly, drive upwards through guard into chin.",
+            },
+            {
+              num: "#6",
+              name: "Sağ Aparkat / Rear Uppercut",
+              hand: language === "tr" ? "Güç Eli" : "Power Hand",
+              cue:
+                language === "tr"
+                  ? "Kalçayı yukarı patlatarak çeneye veya karaciğere dik kuvvet uygula."
+                  : "Explosive upward hip extension delivering power vertically.",
+            },
+          ].map((item) => (
+            <View
+              key={item.num}
+              className="rounded-3xl border border-surfaceBorder bg-[#141419] p-4 flex-row items-start gap-3.5"
+            >
+              <View className="h-11 w-11 rounded-2xl bg-crimson/15 border border-crimson/30 items-center justify-center">
+                <Text className="text-base font-black font-mono text-crimson">{item.num}</Text>
               </View>
-              <Text className="text-xs text-textSecondary">{combo.desc}</Text>
-            </Card>
+              <View className="flex-1">
+                <View className="flex-row items-center justify-between mb-1">
+                  <Text className="text-sm font-black text-textPrimary">{item.name}</Text>
+                  <Text className="text-[10px] font-bold text-textSecondary uppercase">
+                    {item.hand}
+                  </Text>
+                </View>
+                <Text className="text-xs text-textSecondary leading-relaxed">{item.cue}</Text>
+              </View>
+            </View>
+          ))}
+
+          <SectionHeader
+            title={language === "tr" ? "Savunma & Kaçışlar" : "Defense & Movement"}
+            subtitle={
+              language === "tr"
+                ? "Vurulmamak boksun yarısıdır"
+                : "Defensive systems & slipping mechanics"
+            }
+          />
+
+          {[
+            {
+              name: language === "tr" ? "Eskiş (Slip)" : "Slip (Inside & Outside)",
+              desc:
+                language === "tr"
+                  ? "Bel ve dizlerden hafif bükülerek yumruk çizgisinin sadece birkaç santim dışına çıkın."
+                  : "Bend at waist and knees off the center line just enough to let punches breeze past.",
+            },
+            {
+              name: language === "tr" ? "Roll / Bob & Weave" : "Bob & Weave (Roll)",
+              desc:
+                language === "tr"
+                  ? "U harfi çizerek kroşenin altından kayıp ters taraftan karşı saldırı pozisyonu alın."
+                  : "Underhand dip in a U-shape under incoming hooks to counter-strike.",
+            },
+            {
+              name: language === "tr" ? "Yüksek Gard Blok (High Guard)" : "High Guard Absorption",
+              desc:
+                language === "tr"
+                  ? "Eldivenler şakaklara yapışık, dirsekler göğsü ve çeneyi kalkan gibi kilitler."
+                  : "Gloves glued to temples, elbows tight, absorb impact through the forearms.",
+            },
+          ].map((def) => (
+            <View
+              key={def.name}
+              className="rounded-3xl border border-surfaceBorder bg-[#141419] p-4"
+            >
+              <View className="flex-row items-center gap-2 mb-1">
+                <Ionicons name="shield-checkmark" size={16} color="#38BDF8" />
+                <Text className="text-sm font-black text-textPrimary">{def.name}</Text>
+              </View>
+              <Text className="text-xs text-textSecondary leading-relaxed">{def.desc}</Text>
+            </View>
           ))}
         </View>
       )}
